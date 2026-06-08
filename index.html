@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Procurement Intel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e1216; --panel:#161c22; --panel2:#1c242c; --line:#2a343d;
+    --ink:#eef2f4; --dim:#94a2ad; --faint:#6f7d88;
+    --match:#5fd08a; --build:#f4c560; --hard:#f08a7a; --link:#83c0ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -200px,#19222b 0%,var(--bg) 60%);
+    color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:880px;margin:0 auto;padding:40px 20px 80px}
+  .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--build);margin-bottom:6px}
+  h1{font-family:"Fraunces",serif;font-weight:800;font-size:38px;line-height:1.05;margin:0 0 10px;letter-spacing:-.01em}
+  .lede{color:var(--dim);font-size:14px;max-width:620px;margin-bottom:8px}
+  .runline{color:var(--faint);font-size:12px;margin-bottom:26px}
+  .stats{display:flex;gap:12px;margin-bottom:26px;flex-wrap:wrap}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px;min-width:120px;flex:1}
+  .stat b{font-family:"Fraunces",serif;font-size:34px;font-weight:600;display:block;line-height:1}
+  .stat span{color:var(--dim);font-size:12px;display:block;margin-top:6px}
+  .tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .tabs button{background:var(--panel);color:var(--dim);border:1px solid var(--line);border-radius:999px;
+    padding:8px 16px;cursor:pointer;font:inherit;font-size:13px;transition:.15s}
+  .tabs button:hover{color:var(--ink)}
+  .tabs button.on{background:var(--ink);color:#0e1216;border-color:var(--ink);font-weight:600}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:14px}
+  .card.match{border-color:rgba(95,208,138,.5);box-shadow:0 0 0 1px rgba(95,208,138,.12)}
+  .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--faint);margin-bottom:9px}
+  .meta .geo{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--dim)}
+  .pill{font-weight:600;padding:2px 9px;border-radius:6px;letter-spacing:.02em}
+  .pill.m{background:var(--match);color:#06281a}
+  .pill.b{background:var(--build);color:#3a2c06}
+  .pill.d-hard{background:rgba(240,138,122,.16);color:var(--hard);border:1px solid rgba(240,138,122,.4)}
+  .pill.d-moderate{background:rgba(244,197,96,.14);color:var(--build);border:1px solid rgba(244,197,96,.35)}
+  .pill.d-easy{background:rgba(95,208,138,.14);color:var(--match);border:1px solid rgba(95,208,138,.35)}
+  h3{font-family:"Fraunces",serif;font-weight:600;font-size:20px;margin:2px 0 9px;line-height:1.25}
+  h3 a{color:var(--ink);text-decoration:none;border-bottom:1px solid transparent}
+  h3 a:hover{border-color:var(--link);color:var(--link)}
+  .line{font-size:13.5px;margin-bottom:5px}
+  .line.sub{color:var(--dim)}
+  .tag{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+    padding:1px 9px;margin-left:5px;font-size:11px;color:var(--dim)}
+  .why{font-size:12.5px;color:var(--dim);font-style:italic;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+  .build{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+  .bh{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+  .bh b{color:var(--ink)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle}
+  .dot.partial{background:var(--build)} .dot.yes{background:var(--match)}
+  .bl{font-size:13px;margin:6px 0;color:#c8d2da}
+  .bl em{display:inline-block;min-width:70px;color:var(--faint);font-style:normal;font-size:11px;
+    letter-spacing:.04em;text-transform:uppercase;vertical-align:top}
+  .bl.warn{color:#f6cfa4}
+  .bidbtn{display:inline-block;margin-top:14px;font-size:13px;font-weight:600;color:#06281a;
+    background:var(--match);padding:8px 14px;border-radius:9px;border:0;cursor:pointer;font-family:inherit}
+  .pack{display:none;margin-top:14px;border-top:1px dashed var(--line);padding-top:14px}
+  .pack.open{display:block}
+  .pack h4{font-family:"Fraunces",serif;font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--build);margin:16px 0 6px}
+  .pack h5{font-size:13px;color:#cdd6dd;margin:12px 0 3px}
+  .pack p{font-size:13px;color:#c8d2da;margin:6px 0}
+  .pack ul{margin:6px 0;padding-left:20px} .pack li{font-size:13px;color:#c8d2da;margin:3px 0}
+  .pack .disc{color:var(--faint);font-size:11.5px;margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+  footer{color:var(--faint);font-size:11px;margin-top:30px;text-align:center;line-height:1.7}
+  .state{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;color:var(--dim);font-size:14px}
+  .state.err{border-color:rgba(240,138,122,.4);color:#f6cfa4}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">UK public-sector procurement</div>
+  <h1>Procurement Intel</h1>
+  <div class="lede">Every day, the firehose of government tenders filtered down to the few a one-person software shop could actually build &mdash; and, for those, what it would take to win.</div>
+  <div class="runline" id="runline">Filter: software / data / AI &middot; &pound;25k&ndash;&pound;250k &middot; SME-suitable &middot; England + Scotland &middot; light&ndash;medium.</div>
+
+  <div class="stats">
+    <div class="stat"><b id="s-total">&middot;</b><span>tenders seen</span></div>
+    <div class="stat"><b id="s-match" style="color:var(--match)">&middot;</b><span>matches your filter</span></div>
+    <div class="stat"><b id="s-build" style="color:var(--build)">&middot;</b><span>buildable solo + AI</span></div>
+  </div>
+
+  <div class="tabs">
+    <button data-f="build" class="on">Buildable</button>
+    <button data-f="match">Matches</button>
+    <button data-f="all">All</button>
+  </div>
+
+  <div id="list"><div class="state">Loading the latest tenders&hellip;</div></div>
+
+  <footer>
+    Source: Find a Tender &amp; Contracts Finder &middot; &copy; Crown copyright, Open Government Licence v3.0<br>
+    Draft bid material is a starting point, not legal or financial advice &mdash; confirm all requirements against the actual tender documents.
+  </footer>
+</div>
+
+<script>
+const SUPABASE_URL = "https://xeadalusejspxhqesisv.supabase.co";
+const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlYWRhbHVzZWpzcHhocWVzaXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDA3MDQsImV4cCI6MjA5NjQxNjcwNH0.i_-TytaPBtOTCoI0-1OlSBSX5kbiUrOQGCWgUTodrfU";
+const HEADERS = { apikey: ANON, Authorization: "Bearer " + ANON };
+
+const SOLO = { yes:"Buildable solo + AI", partial:"Software yes - full service no" };
+const DIFF = { hard:"Hard to win", moderate:"Moderate", easy:"Easy" };
+let TENDERS = [], PACKS = {};
+
+function esc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function gbp(min,max){const f=n=>"&pound;"+Number(n).toLocaleString("en-GB",{maximumFractionDigits:0});
+  if(min!=null&&max!=null&&min!==max)return f(min)+"&ndash;"+f(max);const v=(max!=null?max:min);return v!=null?f(v):"value not stated";}
+function dl(d){if(!d)return"";const dt=new Date(d);const days=Math.ceil((dt-Date.now())/86400000);
+  const t=dt.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});return days>=0?"closes "+t+" &middot; "+days+"d":"closed "+t;}
+
+// minimal markdown -> html for stored bid-pack text
+function md(src){
+  const lines=esc(src||"").split("\n");const out=[];let inList=false;
+  const inl=s=>s.replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");
+  for(let raw of lines){const line=raw.trim();
+    const close=()=>{if(inList){out.push("</ul>");inList=false;}};
+    if(/^### /.test(line)){close();out.push("<h5>"+inl(line.slice(4))+"</h5>");}
+    else if(/^## /.test(line)){close();out.push("<h4>"+inl(line.slice(3))+"</h4>");}
+    else if(/^[-*] /.test(line)){if(!inList){out.push("<ul>");inList=true;}out.push("<li>"+inl(line.slice(2))+"</li>");}
+    else if(line===""){close();}
+    else{close();out.push("<p>"+inl(line)+"</p>");}
+  }
+  if(inList)out.push("</ul>");
+  return out.join("");
+}
+
+function srcName(s){return s==="contracts_finder"?"Contracts Finder":"Find a Tender";}
+
+function cardHTML(t){
+  const buildable = t.build_solo==="yes"||t.build_solo==="partial";
+  const tags=(t.cls_tech_tags||[]).filter(Boolean).map(x=>`<span class="tag">${esc(x)}</span>`).join("");
+  let build="";
+  if(t.build_assessed && t.build_solo && t.build_solo!=="no"){
+    build=`<div class="build">
+      <div class="bh"><span class="dot ${t.build_solo}"></span>Build-to-order: <b>${esc(SOLO[t.build_solo]||t.build_solo)}</b>${t.build_effort?" &middot; "+esc(t.build_effort):""}</div>
+      ${t.build_core?`<div class="bl"><em>What</em> ${esc(t.build_core)}</div>`:""}
+      ${t.build_stack?`<div class="bl"><em>How</em> ${esc(t.build_stack)}</div>`:""}
+      ${t.build_blockers?`<div class="bl warn"><em>Catch</em> ${esc(t.build_blockers)}</div>`:""}
+      ${t.build_reusable?`<div class="bl"><em>Sell-many</em> ${esc(t.build_reusable)}</div>`:""}
+    </div>`;
+  }
+  let pack="";
+  const p=PACKS[t.notice_id];
+  if(p){
+    pack=`<button class="bidbtn" onclick="this.nextElementSibling.classList.toggle('open')">View bid pack &mdash; requirements, spec &amp; draft &rarr;</button>
+      <div class="pack">${md(p.requirements)}${md(p.build_spec)}${md(p.draft_bid)}
+        <div class="disc">Drafted from the published notice + general practice; confirm against the tender documents.</div></div>`;
+  }
+  const diff=t.build_difficulty?`<span class="pill d-${t.build_difficulty}">${DIFF[t.build_difficulty]||t.build_difficulty}</span>`:"";
+  return `<article class="card ${t.matched_filter?'match':''}" data-match="${t.matched_filter}" data-build="${buildable}">
+    <div class="meta">
+      ${t.matched_filter?'<span class="pill m">MATCH</span>':''}
+      ${buildable?'<span class="pill b">BUILD</span>':''}
+      ${diff}
+      <span>${esc(t.cls_sector||"-")}</span><span>&middot;</span><span>${esc(t.stage||"-")}</span><span>&middot;</span><span>${esc(srcName(t.source))}</span>
+      <span class="geo">${esc(t.cls_geography||"")}</span>
+    </div>
+    <h3>${t.source_url?`<a href="${esc(t.source_url)}" target="_blank" rel="noopener">${esc(t.title)}</a>`:esc(t.title)}</h3>
+    <div class="line"><strong>${esc(t.buyer_name||"Unknown buyer")}</strong> &middot; ${gbp(t.value_min,t.value_max)}${t.deadline_date?" &middot; "+dl(t.deadline_date):""}</div>
+    <div class="line sub">${esc(t.cls_category||"-")} &middot; ${esc(t.cls_complexity||"-")} complexity${t.cls_framework_route&&t.cls_framework_route!=="unknown"?" &middot; "+esc(t.cls_framework_route):""}${tags}</div>
+    ${t.cls_reasoning?`<div class="why">${esc(t.cls_reasoning)}</div>`:""}
+    ${build}${pack}
+  </article>`;
+}
+
+function render(f){
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.f===f));
+  const show=TENDERS.filter(t=>f==="all"||(f==="match"&&t.matched_filter)||(f==="build"&&(t.build_solo==="yes"||t.build_solo==="partial")));
+  const list=document.getElementById("list");
+  if(show.length===0){
+    list.innerHTML=`<div class="state">No tenders in this view yet. Once the daily fetch runs, matches will appear here automatically.</div>`;
+    return;
+  }
+  list.innerHTML=show.map(cardHTML).join("");
+}
+
+function rank(t){ // buildable first, then matches, then by difficulty, then newest
+  const b=(t.build_solo==="yes"?0:t.build_solo==="partial"?1:5);
+  const m=t.matched_filter?0:1;
+  const d={hard:0,moderate:1,easy:2}[t.build_difficulty]!=null?{hard:0,moderate:1,easy:2}[t.build_difficulty]:3;
+  return [b,m,d];
+}
+
+async function load(){
+  try{
+    const [tr,pr,rr]=await Promise.all([
+      fetch(SUPABASE_URL+"/rest/v1/tenders?select=*&limit=300",{headers:HEADERS}),
+      fetch(SUPABASE_URL+"/rest/v1/bid_packs?select=*",{headers:HEADERS}),
+      fetch(SUPABASE_URL+"/rest/v1/ingest_runs?select=started_at&order=started_at.desc&limit=1",{headers:HEADERS})
+    ]);
+    if(!tr.ok) throw new Error("tenders "+tr.status);
+    TENDERS=await tr.json();
+    const packs=pr.ok?await pr.json():[];
+    packs.forEach(p=>{PACKS[p.notice_id]=p;});
+    TENDERS.sort((a,b)=>{const x=rank(a),y=rank(b);for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]-y[i];}
+      return new Date(b.published_date||0)-new Date(a.published_date||0);});
+
+    document.getElementById("s-total").textContent=TENDERS.length;
+    document.getElementById("s-match").textContent=TENDERS.filter(t=>t.matched_filter).length;
+    document.getElementById("s-build").textContent=TENDERS.filter(t=>t.build_solo==="yes"||t.build_solo==="partial").length;
+    const runs=rr.ok?await rr.json():[];
+    if(runs[0]) document.getElementById("runline").innerHTML+=" Last updated "+new Date(runs[0].started_at).toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"})+".";
+    render("build");
+  }catch(e){
+    document.getElementById("list").innerHTML=`<div class="state err">Couldn't load live data (${esc(e.message)}). If you opened this file directly, try the hosted version instead &mdash; some browsers block data requests from local files.</div>`;
+  }
+}
+document.querySelectorAll(".tabs button").forEach(b=>b.addEventListener("click",()=>render(b.dataset.f)));
+load();
+</script>
+</body>
+</html>
