@@ -140,6 +140,7 @@ function gbp(min,max){const f=n=>"&pound;"+Number(n).toLocaleString("en-GB",{max
   if(min!=null&&max!=null&&min!==max)return f(min)+"&ndash;"+f(max);const v=(max!=null?max:min);return v!=null?f(v):"value not stated";}
 function dl(d){if(!d)return"";const dt=new Date(d);const days=Math.ceil((dt-Date.now())/86400000);
   const t=dt.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});return days>=0?"closes "+t+" &middot; "+days+"d":"closed "+t;}
+function pub(d){if(!d)return"";return new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});}
 function isOpen(t){return t.stage==="tender" && (!t.deadline_date || new Date(t.deadline_date) >= new Date());}
 
 // minimal markdown -> html for stored bid-pack text
@@ -188,7 +189,7 @@ function cardHTML(t){
       ${t.matched_filter?'<span class="pill m">MATCH</span>':''}
       ${buildable?'<span class="pill b">BUILD</span>':''}
       ${diff}
-      <span>${esc(t.cls_sector||"-")}</span><span>&middot;</span><span>${esc(t.stage||"-")}</span><span>&middot;</span><span>${esc(srcName(t.source))}</span>
+      <span>${esc(t.cls_sector||"-")}</span><span>&middot;</span><span>${esc(t.stage||"-")}</span><span>&middot;</span><span>${esc(srcName(t.source))}</span>${t.published_date?'<span>&middot;</span><span>added '+esc(pub(t.published_date))+'</span>':''}
       <span class="geo">${esc(t.cls_geography||"")}</span>
     </div>
     <h3>${t.source_url?`<a href="${esc(t.source_url)}" target="_blank" rel="noopener">${esc(t.title)}</a>`:esc(t.title)}</h3>
@@ -218,7 +219,7 @@ function render(f){
   list.innerHTML=show.map(cardHTML).join("");
 }
 
-function rank(t){ // open first, then buildable, then matches, then difficulty
+function rank(t){ // within the same day: open first, then buildable, then matches, then difficulty
   const o=isOpen(t)?0:1;
   const b=(t.build_solo==="yes"?0:t.build_solo==="partial"?1:5);
   const m=t.matched_filter?0:1;
@@ -254,8 +255,14 @@ async function load(){
     TENDERS=await tr.json();
     const packs=pr.ok?await pr.json():[];
     packs.forEach(p=>{PACKS[p.notice_id]=p;});
-    TENDERS.sort((a,b)=>{const x=rank(a),y=rank(b);for(let i=0;i<x.length;i++){if(x[i]!==y[i])return x[i]-y[i];}
-      return new Date(b.published_date||0)-new Date(a.published_date||0);});
+    // newest first; within the same day, most relevant first
+    TENDERS.sort((a,b)=>{
+      const da=new Date(a.published_date||0), db=new Date(b.published_date||0);
+      if(db-da!==0) return db-da;
+      const x=rank(a),y=rank(b);
+      for(let i=0;i<x.length;i++){if(x[i]!==y[i])return x[i]-y[i];}
+      return 0;
+    });
 
     document.getElementById("s-total").textContent=TENDERS.length;
     document.getElementById("s-open").textContent=TENDERS.filter(isOpen).length;
