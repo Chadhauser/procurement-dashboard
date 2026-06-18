@@ -38,7 +38,7 @@
   .readiness{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:4px 18px 14px;margin-bottom:24px}
   .readiness summary{cursor:pointer;font-family:"Fraunces",serif;font-size:17px;font-weight:600;padding:12px 0;list-style:none;outline:none}
   .readiness summary::-webkit-details-marker{display:none}
-  .readiness summary::after{content:"\\0025BE";float:right;color:var(--faint);font-size:13px}
+  .readiness summary::after{content:"\25BE";float:right;color:var(--faint);font-size:13px}
   .rsum{color:var(--dim);font-size:12px;margin:0 0 8px}
   .rrow{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:13px;flex-wrap:wrap}
   .rdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;position:relative;top:1px}
@@ -113,7 +113,7 @@
 
   <div class="seg" id="seg">
     <button data-j="uk" class="on">🇬🇧 UK contracts</button>
-    <button data-j="us">🇺🇸 US bases</button>
+    <button data-j="us">🇺🇸 US in the UK</button>
   </div>
 
   <div class="lede" id="lede">Loading&hellip;</div>
@@ -170,20 +170,22 @@ const VIEW = {
     default: "ipp",
   },
   us: {
-    lede: "US military-base contracts performed at the UK bases (Lakenheath, Mildenhall, Alconbury and the rest) — the lead feed for the bid-review service.",
+    lede: "Every US-government contract performed in the UK, indexed daily by place of performance. The USAF bases are the core; <b>Wider UK</b> is everything else &mdash; the London embassy and beyond &mdash; your expansion view.",
     source: "SAM.gov &middot; U.S. federal contracting (public data)",
-    legend: "<b>OPEN</b> accepting bids now &middot; <b>AWARDED</b> already won &mdash; the firm that won is a prospect for the review service",
+    legend: "<b>BASE</b> at a named USAF base &middot; <b>OPEN</b> accepting bids &middot; <b>AWARDED</b> already won &mdash; the winner is a prospect for the review service",
     stats: [
-      { f:"all",   id:"total", label:"notices seen" },
-      { f:"open",  id:"open",  label:"open solicitations", color:"var(--link)" },
+      { f:"all",   id:"total", label:"UK notices indexed" },
+      { f:"bases", id:"bases", label:"at the bases", color:"var(--match)" },
+      { f:"wider", id:"wider", label:"wider UK", color:"var(--lead)" },
       { f:"award", id:"award", label:"awards (prospects)", color:"var(--build)" },
     ],
     tabs: [
-      { f:"open",  label:"Open solicitations" },
+      { f:"bases", label:"Bases" },
+      { f:"wider", label:"Wider UK" },
       { f:"award", label:"Awards (prospects)" },
       { f:"all",   label:"All" },
     ],
-    default: "open",
+    default: "bases",
   },
 };
 
@@ -209,6 +211,13 @@ function geoOk(t){
 }
 // A bid-support lead: a live, SME-suitable UK contract a business could be helped to win.
 function isLead(t){return jur(t)==="uk" && isOpen(t) && t.cls_sme_suitable===true && geoOk(t);}
+// A named USAF base in the UK: the core of the US index. Everything else UK-performed
+// is "wider UK" (embassy etc.) — the expansion view. Detected from place/title text.
+const US_BASES = ["lakenheath","mildenhall","alconbury","molesworth","croughton","feltwell","fairford","menwith"];
+function isUsBase(t){
+  const hay = ((t.region||"")+" "+(t.title||"")+" "+(t.buyer_name||"")).toLowerCase();
+  return US_BASES.some(k=>hay.includes(k));
+}
 function jur(t){return t.jurisdiction || "uk";}
 function subset(){return TENDERS.filter(t=>jur(t)===CURRENT_J);}
 
@@ -272,12 +281,13 @@ function ukCard(t){
 }
 
 function usCard(t){
-  const open=isOpen(t), award=isAward(t);
+  const open=isOpen(t), award=isAward(t), base=isUsBase(t);
   const tags=(t.cpv_codes||[]).filter(Boolean).map(x=>`<span class="tag">${esc(x)}</span>`).join("");
-  return `<article class="card ${award?'closed':''}">
+  return `<article class="card ${base?'match':''} ${award?'closed':''}">
     <div class="meta">
       ${open?'<span class="pill o">OPEN</span>':''}
       ${award?'<span class="pill c">AWARDED</span>':''}
+      ${base?'<span class="pill m">BASE</span>':'<span class="pill l">WIDER UK</span>'}
       <span>${esc(t.status||t.stage||"notice")}</span><span>&middot;</span><span>SAM.gov</span>${t.published_date?'<span>&middot;</span><span>added '+esc(pub(t.published_date))+'</span>':''}
       <span class="geo">${esc(t.region||"")}</span>
     </div>
@@ -295,6 +305,8 @@ function passesFilter(t,f){
   if(f==="ipp") return !!t.matched_filter;
   if(f==="lead") return isLead(t);
   if(f==="build") return t.build_solo==="yes"||t.build_solo==="partial";
+  if(f==="bases") return isUsBase(t);
+  if(f==="wider") return !isUsBase(t);
   if(f==="award") return isAward(t);
   return true;
 }
@@ -309,8 +321,9 @@ function refreshStats(){
 function emptyMsg(f){
   const total=subset().length;
   if(CURRENT_J==="us"){
-    if(total===0) return "The US feed is set up and switches on at the next morning run (06:30). Base-support notices and awards at the UK bases will appear here once it has pulled them.";
-    if(f==="open") return "No open solicitations in the current window. The <b>Awards</b> tab shows which firms have recently won base-support work &mdash; your prospect list.";
+    if(total===0) return "The US index switches on at the next morning run. The free SAM key's daily quota resets at midnight UTC, so UK-performed US-government notices &mdash; the bases and beyond &mdash; start landing here from the next run.";
+    if(f==="bases") return "No base notices live right now. Check <b>Wider UK</b> for other UK-performed US work, or untick 'hide closed' for awarded ones.";
+    if(f==="wider") return "No wider-UK notices live right now &mdash; everything indexed is at the bases. The <b>Bases</b> tab has them.";
     if(f==="award") return "No award notices in the current window yet.";
     return "Nothing in this view yet.";
   }
