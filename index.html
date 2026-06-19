@@ -213,7 +213,7 @@ function geoOk(t){
 function isLead(t){return jur(t)==="uk" && isOpen(t) && t.cls_sme_suitable===true && geoOk(t);}
 // A named USAF base in the UK: the core of the US index. Everything else UK-performed
 // is "wider UK" (embassy etc.) — the expansion view. Detected from place/title text.
-const US_BASES = ["lakenheath","mildenhall","alconbury","molesworth","croughton","feltwell","fairford","menwith"];
+const US_BASES = ["lakenheath","mildenhall","alconbury","molesworth","croughton","feltwell","fairford","menwith","rafl","rafm"];
 function isUsBase(t){
   const hay = ((t.region||"")+" "+(t.title||"")+" "+(t.buyer_name||"")).toLowerCase();
   return US_BASES.some(k=>hay.includes(k));
@@ -399,7 +399,7 @@ function renderReadiness(rows){
 async function load(){
   try{
     const [tr,pr,rr,sr]=await Promise.all([
-      fetch(SUPABASE_URL+"/rest/v1/tenders?select=*&limit=500",{headers:HEADERS}),
+      fetch(SUPABASE_URL+"/rest/v1/tenders?select=*&order=published_date.desc.nullslast&limit=2000",{headers:HEADERS}),
       fetch(SUPABASE_URL+"/rest/v1/bid_packs?select=*",{headers:HEADERS}),
       fetch(SUPABASE_URL+"/rest/v1/ingest_runs?select=started_at&order=started_at.desc&limit=1",{headers:HEADERS}),
       fetch(SUPABASE_URL+"/rest/v1/supplier_applications?select=*",{headers:HEADERS})
