@@ -53,6 +53,9 @@
     padding:8px 16px;cursor:pointer;font:inherit;font-size:13px;transition:.15s}
   .tabs button:hover{color:var(--ink)}
   .tabs button.on{background:var(--ink);color:#0e1216;border-color:var(--ink);font-weight:600}
+  .profbtn{background:var(--panel);color:var(--dim);border:1px solid var(--line);border-radius:999px;
+    padding:8px 14px;cursor:pointer;font:inherit;font-size:12.5px;transition:.15s}
+  .profbtn:hover{color:var(--ink);border-color:var(--ink)}
   .toggle{display:inline-flex;align-items:center;gap:7px;color:var(--dim);font-size:12.5px;cursor:pointer;margin-left:auto;user-select:none}
   .toggle input{accent-color:var(--match);width:15px;height:15px;cursor:pointer;margin:0}
   @media(max-width:560px){.toggle{margin-left:0;width:100%}}
@@ -104,6 +107,36 @@
   footer{color:var(--faint);font-size:11px;margin-top:30px;text-align:center;line-height:1.7}
   .state{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;color:var(--dim);font-size:14px}
   .state.err{border-color:rgba(240,138,122,.4);color:#f6cfa4}
+  /* Bid workspace */
+  .bidstart{display:inline-block;margin-top:14px;font-size:13px;font-weight:600;color:#04243f;
+    background:var(--link);padding:8px 14px;border-radius:9px;border:0;cursor:pointer;font-family:inherit}
+  .modal{position:fixed;inset:0;background:rgba(6,9,12,.74);display:none;align-items:flex-start;
+    justify-content:center;padding:28px 14px;overflow-y:auto;z-index:50}
+  .modal.open{display:flex}
+  .sheet{background:var(--panel);border:1px solid var(--line);border-radius:18px;max-width:760px;width:100%;
+    padding:24px 24px 28px;margin:auto}
+  .sheet h2{font-family:"Fraunces",serif;font-weight:700;font-size:23px;margin:0 0 4px}
+  .sheet .sub{color:var(--dim);font-size:13px;margin-bottom:8px;line-height:1.5}
+  .sheet label{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin:14px 0 5px}
+  .sheet input,.sheet textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+    color:var(--ink);font:inherit;font-size:13.5px;padding:9px 11px;resize:vertical}
+  .sheet textarea{min-height:64px;line-height:1.5}
+  .sheet input:focus,.sheet textarea:focus{outline:none;border-color:var(--link)}
+  .sheet .hint{font-size:11.5px;color:var(--faint);margin-top:4px}
+  .sheetbar{display:flex;gap:10px;align-items:center;margin-top:22px;flex-wrap:wrap}
+  .btn{font:inherit;font-size:13px;font-weight:600;border-radius:9px;padding:9px 16px;cursor:pointer;border:1px solid var(--line)}
+  .btn.primary{background:var(--match);color:#06281a;border-color:var(--match)}
+  .btn.link{background:var(--link);color:#04243f;border-color:var(--link)}
+  .btn.ghost{background:transparent;color:var(--dim)}
+  .btn.ghost:hover{color:var(--ink);border-color:var(--ink)}
+  .closex{float:right;background:transparent;border:0;color:var(--faint);font-size:24px;cursor:pointer;line-height:1;margin:-2px -4px 0 0}
+  .savednote{font-size:12px;color:var(--match);margin-left:auto}
+  .draft{background:#fbfaf7;color:#1a2228;border-radius:10px;padding:22px 26px;margin-top:8px;
+    max-height:48vh;overflow-y:auto;font-family:"IBM Plex Sans",sans-serif;font-size:13px;line-height:1.6}
+  .draft h1{font-family:"Fraunces",serif;font-size:21px;color:#11181d;margin:0 0 2px;border:0;letter-spacing:0}
+  .draft h2{font-family:"Fraunces",serif;font-size:15px;color:#11181d;margin:16px 0 4px;border:0;padding:0;text-transform:none;letter-spacing:0}
+  .draft p{margin:5px 0;white-space:pre-wrap}
+  .draft .pmuted{color:#8a949c;font-style:italic}
 </style>
 </head>
 <body>
@@ -128,6 +161,7 @@
 
   <div class="controls">
     <div class="tabs" id="tabs"></div>
+    <button class="profbtn" onclick="openProfile()">&#9998; My bid profile</button>
     <label class="toggle"><input type="checkbox" id="hideClosed" checked> Hide closed &amp; awarded</label>
   </div>
   <div class="legend" id="legend"></div>
@@ -138,6 +172,37 @@
     Source: <span id="src">Find a Tender &amp; Contracts Finder</span><br>
     Draft material is a starting point, not legal or financial advice &mdash; confirm everything against the actual notice.
   </footer>
+</div>
+
+<!-- Bid workspace modal -->
+<div class="modal" id="bidModal">
+  <div class="sheet">
+    <button class="closex" onclick="closeModal('bidModal')">&times;</button>
+    <h2>Start a bid</h2>
+    <div class="sub" id="bidTenderLine"></div>
+    <div id="bidForm"></div>
+    <div class="sheetbar">
+      <button class="btn primary" onclick="genDraft()">Build draft</button>
+      <button class="btn ghost" onclick="closeModal('bidModal')">Close</button>
+      <span class="savednote" id="bidSaved"></span>
+    </div>
+    <div id="draftWrap"></div>
+  </div>
+</div>
+
+<!-- Bid profile modal -->
+<div class="modal" id="profModal">
+  <div class="sheet">
+    <button class="closex" onclick="closeModal('profModal')">&times;</button>
+    <h2>My bid profile</h2>
+    <div class="sub">Fill these once. They're the answers that repeat in almost every bid &mdash; reused each time so you never start from a blank page. Saved in this browser.</div>
+    <div id="profForm"></div>
+    <div class="sheetbar">
+      <button class="btn primary" onclick="saveProfile()">Save profile</button>
+      <button class="btn ghost" onclick="closeModal('profModal')">Close</button>
+      <span class="savednote" id="profSaved"></span>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -261,6 +326,7 @@ function ukCard(t){
   const diff=t.build_difficulty?`<span class="pill d-${t.build_difficulty}">${DIFF[t.build_difficulty]||t.build_difficulty}</span>`:"";
   const closedPill = closed?`<span class="pill c">${isAward(t)?"AWARDED":"CLOSED"}</span>`:"";
   const srcName = t.source==="contracts_finder"?"Contracts Finder":"Find a Tender";
+  const startBid = isAward(t) ? "" : `<button class="bidstart" onclick='openBid(${JSON.stringify(String(t.notice_id))})'>Start bid &rarr;</button>`;
   return `<article class="card ${t.matched_filter?'match':''} ${closed?'closed':''}">
     <div class="meta">
       ${open?'<span class="pill o">OPEN</span>':''}
@@ -276,7 +342,7 @@ function ukCard(t){
     <div class="line"><strong>${esc(t.buyer_name||"Unknown buyer")}</strong> &middot; ${money(t.value_min,t.value_max,t.currency)}${t.deadline_date?" &middot; "+dl(t.deadline_date):""}</div>
     <div class="line sub">${esc(t.cls_category||"-")} &middot; ${esc(t.cls_complexity||"-")} complexity${t.cls_framework_route&&t.cls_framework_route!=="unknown"?" &middot; "+esc(t.cls_framework_route):""}${tags}</div>
     ${t.cls_reasoning?`<div class="why">${esc(t.cls_reasoning)}</div>`:""}
-    ${build}${pack}
+    ${build}${pack}${startBid}
   </article>`;
 }
 
@@ -396,6 +462,126 @@ function renderReadiness(rows){
     `<div class="rsum">${done} on &middot; ${prog} in progress &middot; ${rows.length-done-prog} still to do</div>${items}`;
 }
 
+// ---- Bid workspace -------------------------------------------------------
+// Standard, reusable answers (filled once). Stored in this browser.
+const PROFILE_FIELDS = [
+  ["orgOverview","About IPP (overview)","One paragraph on who IPP is and what it does."],
+  ["capability","Capability & services","The services relevant to bids — finance, data, advisory."],
+  ["experience","Relevant experience","Track record / examples. Add to this as you win work."],
+  ["approach","Approach & methodology","How you typically deliver — your standard method."],
+  ["team","Team & qualifications","Key people and credentials (CIMA / ACMA CGMA etc.)."],
+  ["quality","Quality, assurance & compliance","QA, insurance (PI), data handling, ICO registration."],
+  ["socialValue","Social value","Your standard social value statement."],
+  ["pricing","Pricing approach","How you typically price — day rate, fixed fee, retainers."],
+];
+const PROFILE_KEY = "ipp_bid_profile_v1";
+function loadProfile(){ try{ return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {}; }catch(e){ return {}; } }
+function openProfile(){
+  const p=loadProfile();
+  document.getElementById("profForm").innerHTML = PROFILE_FIELDS.map(([k,label,hint])=>
+    `<label>${label}</label><textarea data-k="${k}">${esc(p[k]||"")}</textarea><div class="hint">${hint}</div>`
+  ).join("");
+  document.getElementById("profSaved").textContent="";
+  openModal("profModal");
+}
+function saveProfile(){
+  const p={};
+  document.querySelectorAll("#profForm textarea").forEach(t=>{ p[t.dataset.k]=t.value; });
+  try{ localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); document.getElementById("profSaved").textContent="Saved \u2713"; }
+  catch(e){ document.getElementById("profSaved").textContent="Couldn't save in this browser"; }
+}
+
+// Per-tender questions.
+const BID_FIELDS = [
+  ["requirement","What they need (the requirement)","Summarise what the buyer is asking for. Pre-filled from the notice — refine it."],
+  ["criteria","Evaluation criteria & weighting","From the tender docs — what they score, and how much each is worth."],
+  ["fit","Why IPP fits this one","The specific reasons IPP is a strong fit for THIS contract."],
+  ["winThemes","Win themes (2–3)","The handful of points you want to land throughout the bid."],
+];
+function bidKey(id){ return "ipp_bid_draft_"+id; }
+let CURRENT_BID=null, LAST_DRAFT=null;
+
+function openBid(noticeId){
+  const t = TENDERS.find(x=>String(x.notice_id)===String(noticeId));
+  if(!t) return;
+  CURRENT_BID=t;
+  document.getElementById("bidTenderLine").innerHTML =
+    `<strong>${esc(t.title||"")}</strong><br>${esc(t.buyer_name||"")} &middot; ${money(t.value_min,t.value_max,t.currency)}${t.deadline_date?" &middot; "+dl(t.deadline_date):""}`;
+  let saved={};
+  try{ saved=JSON.parse(localStorage.getItem(bidKey(noticeId)))||{}; }catch(e){}
+  const prefill={
+    requirement: saved.requirement || t.cls_reasoning || t.title || "",
+    criteria: saved.criteria || "",
+    fit: saved.fit || "",
+    winThemes: saved.winThemes || "",
+  };
+  document.getElementById("bidForm").innerHTML = BID_FIELDS.map(([k,label,hint])=>
+    `<label>${label}</label><textarea data-k="${k}">${esc(prefill[k]||"")}</textarea><div class="hint">${hint}</div>`
+  ).join("");
+  document.getElementById("draftWrap").innerHTML="";
+  document.getElementById("bidSaved").textContent="";
+  openModal("bidModal");
+}
+
+function genDraft(){
+  if(!CURRENT_BID) return;
+  const t=CURRENT_BID, p=loadProfile(), inp={};
+  document.querySelectorAll("#bidForm textarea").forEach(x=>{ inp[x.dataset.k]=x.value.trim(); });
+  try{ localStorage.setItem(bidKey(t.notice_id), JSON.stringify(inp)); document.getElementById("bidSaved").textContent="Saved \u2713"; }catch(e){}
+
+  const buyer = t.buyer_name || "the authority";
+  const ph = txt => txt ? txt : null; // placeholder helper
+  const need = (val, prompt) => val || ("["+prompt+"]");
+
+  const sections=[];
+  sections.push(["Executive summary",
+    need(p.orgOverview,"Add your IPP overview in My bid profile") + "\n\n" +
+    "Insight Professional Partners is pleased to submit this proposal to " + buyer + " for " +
+    (t.title||"this requirement") + ". " + need(inp.fit,"Add why IPP fits this one in the form")]);
+  sections.push(["Our understanding of the requirement", need(inp.requirement,"Summarise the requirement in the form")]);
+  if(inp.criteria) sections.push(["How we meet your evaluation criteria", inp.criteria]);
+  sections.push(["Our capability", need(p.capability,"Add capability in My bid profile")]);
+  sections.push(["Our approach & methodology", need(p.approach,"Add approach in My bid profile")]);
+  sections.push(["Relevant experience", need(p.experience,"Add relevant experience in My bid profile")]);
+  sections.push(["Our team", need(p.team,"Add team & qualifications in My bid profile")]);
+  sections.push(["Quality, assurance & compliance", need(p.quality,"Add quality & assurance in My bid profile")]);
+  if(p.socialValue) sections.push(["Social value", p.socialValue]);
+  sections.push(["Pricing", need(p.pricing,"Add pricing approach in My bid profile")]);
+  if(inp.winThemes) sections.push(["Why "+buyer+" should choose IPP", inp.winThemes]);
+
+  LAST_DRAFT={ title:t.title||"Bid proposal", buyer, deadline:t.deadline_date, sections };
+
+  const renderP = b => esc(b).replace(/\[(.+?)\]/g,'<span class="pmuted">[$1]</span>');
+  const html = `<h1>${esc(t.title||"Bid proposal")}</h1>`+
+    `<p class="pmuted">Proposal to ${esc(buyer)}${t.deadline_date?" &middot; "+esc(dl(t.deadline_date)):""}</p>`+
+    sections.map(([h,b])=>`<h2>${esc(h)}</h2><p>${renderP(b)}</p>`).join("");
+  const anyGaps = sections.some(([h,b])=>/\[.+?\]/.test(b));
+  document.getElementById("draftWrap").innerHTML =
+    `<div class="draft">${html}</div>`+
+    `<div class="sheetbar"><button class="btn link" onclick="downloadWord()">&#8595; Download as Word</button>`+
+    (anyGaps?`<span class="hint">Bits in [brackets] still need filling — complete your bid profile and the form, then Build draft again.</span>`:``)+
+    `</div>`;
+}
+
+function downloadWord(){
+  if(!LAST_DRAFT) return;
+  const {title,buyer,deadline,sections}=LAST_DRAFT;
+  const body = `<h1 style="font-family:Georgia,serif;font-size:20pt">${esc(title)}</h1>`+
+    `<p style="color:#555"><i>Proposal to ${esc(buyer)}${deadline?" &middot; "+esc(dl(deadline)):""}</i></p>`+
+    sections.map(([h,b])=>`<h2 style="font-family:Georgia,serif;font-size:13pt">${esc(h)}</h2><p>${esc(b).replace(/\n/g,"<br>")}</p>`).join("");
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)}</title></head>`+
+    `<body style="font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.5">${body}</body></html>`;
+  const blob=new Blob(["\ufeff",doc],{type:"application/msword"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=(title||"IPP-bid").replace(/[^a-z0-9]+/gi,"-").replace(/^-+|-+$/g,"").slice(0,60)+".doc";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 100);
+}
+
+function openModal(id){ document.getElementById(id).classList.add("open"); }
+function closeModal(id){ document.getElementById(id).classList.remove("open"); }
+
 async function load(){
   try{
     const [tr,pr,rr,sr]=await Promise.all([
@@ -425,6 +611,9 @@ async function load(){
 }
 document.querySelectorAll("#seg button").forEach(b=>b.addEventListener("click",()=>setJurisdiction(b.dataset.j)));
 document.getElementById("hideClosed").addEventListener("change",()=>render(CURRENT_F));
+// Close a modal by clicking its dark backdrop, or pressing Escape.
+document.querySelectorAll(".modal").forEach(m=>m.addEventListener("click",e=>{ if(e.target===m) m.classList.remove("open"); }));
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open")); });
 load();
 </script>
 </body>
