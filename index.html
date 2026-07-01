@@ -137,6 +137,13 @@
   .draft h2{font-family:"Fraunces",serif;font-size:15px;color:#11181d;margin:16px 0 4px;border:0;padding:0;text-transform:none;letter-spacing:0}
   .draft p{margin:5px 0;white-space:pre-wrap}
   .draft .pmuted{color:#8a949c;font-style:italic}
+  .extract{margin:6px 0 10px;border:1px solid var(--line);border-radius:10px;padding:2px 12px 12px;background:var(--panel2)}
+  .extract>summary{cursor:pointer;font-size:12.5px;color:var(--link);padding:10px 0;list-style:none;outline:none}
+  .extract>summary::-webkit-details-marker{display:none}
+  .exgroup{margin-top:12px}
+  .exgroup h4{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--build);margin:10px 0 5px}
+  .exgroup ul{margin:0;padding-left:18px}
+  .exgroup li{font-size:12.5px;color:#c8d2da;margin:3px 0;line-height:1.45}
 </style>
 </head>
 <body>
@@ -180,6 +187,12 @@
     <button class="closex" onclick="closeModal('bidModal')">&times;</button>
     <h2>Start a bid</h2>
     <div class="sub" id="bidTenderLine"></div>
+    <details class="extract" id="extractBox">
+      <summary>&#9662; Paste tender text to pull out questions, scoring &amp; must-haves</summary>
+      <textarea id="tenderPaste" placeholder="Paste the tender or specification text here, then Extract."></textarea>
+      <button class="btn ghost" onclick="extractReqs()" style="margin-top:8px">Extract requirements</button>
+      <div id="extractOut"></div>
+    </details>
     <div id="bidForm"></div>
     <div class="sheetbar">
       <button class="btn primary" onclick="genDraft()">Build draft</button>
@@ -499,7 +512,7 @@ const BID_FIELDS = [
   ["winThemes","Win themes (2–3)","The handful of points you want to land throughout the bid."],
 ];
 function bidKey(id){ return "ipp_bid_draft_"+id; }
-let CURRENT_BID=null, LAST_DRAFT=null;
+let CURRENT_BID=null, LAST_DRAFT=null, LAST_EXTRACT=null;
 
 function openBid(noticeId){
   const t = TENDERS.find(x=>String(x.notice_id)===String(noticeId));
@@ -520,7 +533,58 @@ function openBid(noticeId){
   ).join("");
   document.getElementById("draftWrap").innerHTML="";
   document.getElementById("bidSaved").textContent="";
+  document.getElementById("tenderPaste").value="";
+  document.getElementById("extractOut").innerHTML="";
+  document.getElementById("extractBox").open=false;
+  LAST_EXTRACT=null;
   openModal("bidModal");
+}
+
+// Heuristic requirements extractor: pull the scoring, questions, must-haves and
+// key dates out of pasted tender text. Deterministic, first-pass — the person
+// still sanity-checks against the actual document.
+function extractReqs(){
+  const raw=(document.getElementById("tenderPaste").value||"").trim();
+  const out=document.getElementById("extractOut");
+  if(!raw){ out.innerHTML='<div class="hint">Paste some tender text first.</div>'; return; }
+  const lines=raw.split(/\r?\n/).map(l=>l.replace(/\s+/g," ").trim()).filter(l=>l.length>3);
+  const clip=a=>[...new Set(a)].slice(0,15);
+  const dateRe=/(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4})/i;
+  const weightings=[],questions=[],musts=[],dates=[];
+  lines.forEach(l=>{
+    const low=l.toLowerCase();
+    if(/\d{1,3}\s?%/.test(l)||/\bweight(ing|ed|s)?\b/.test(low)||/\b(scored|scoring|marks? out of|evaluation criteria|price\/quality)\b/.test(low)) weightings.push(l);
+    if(/\?$/.test(l)||/\b(please (describe|provide|explain|detail|outline|confirm|demonstrate|set out|give)|how (do|will|would|can) you|describe how|outline your|detail your|tell us about)\b/.test(low)) questions.push(l);
+    if(/\b(must|shall|mandatory|is required|are required|essential|minimum requirement|you will need to|it is a requirement)\b/.test(low)) musts.push(l);
+    if(/(deadline|closing date|clarification|submission date|return by|closes|tender return|bid due)/.test(low)&&dateRe.test(l)) dates.push(l);
+  });
+  LAST_EXTRACT={weightings:clip(weightings),questions:clip(questions),musts:clip(musts),dates:clip(dates)};
+  const grp=(title,arr)=>arr.length?`<div class="exgroup"><h4>${title} (${arr.length})</h4><ul>${arr.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
+  const any=LAST_EXTRACT.weightings.length||LAST_EXTRACT.questions.length||LAST_EXTRACT.musts.length||LAST_EXTRACT.dates.length;
+  out.innerHTML = any ?
+    grp("Scoring &amp; weightings",LAST_EXTRACT.weightings)+
+    grp("Questions to answer",LAST_EXTRACT.questions)+
+    grp("Must-haves / mandatory",LAST_EXTRACT.musts)+
+    grp("Key dates",LAST_EXTRACT.dates)+
+    `<button class="btn link" onclick="useExtract()" style="margin-top:12px">Pull into the bid form &darr;</button>`
+    : '<div class="hint">Nothing obvious found. This works best pasted straight from the tender or specification document &mdash; you can still fill the form manually below.</div>';
+}
+
+function useExtract(){
+  if(!LAST_EXTRACT) return;
+  const e=LAST_EXTRACT;
+  const ta=k=>document.querySelector(`#bidForm textarea[data-k="${k}"]`);
+  const crit=ta("criteria"), req=ta("requirement");
+  if(crit){
+    let v=[];
+    if(e.weightings.length) v.push(e.weightings.join("\n"));
+    if(e.questions.length) v.push("Questions to address:\n- "+e.questions.join("\n- "));
+    if(v.length) crit.value=v.join("\n\n");
+  }
+  if(req && e.musts.length && !req.value.trim()){
+    req.value="Mandatory requirements:\n- "+e.musts.join("\n- ");
+  }
+  document.getElementById("bidSaved").textContent="Pulled into the form \u2713";
 }
 
 function genDraft(){
@@ -530,7 +594,6 @@ function genDraft(){
   try{ localStorage.setItem(bidKey(t.notice_id), JSON.stringify(inp)); document.getElementById("bidSaved").textContent="Saved \u2713"; }catch(e){}
 
   const buyer = t.buyer_name || "the authority";
-  const ph = txt => txt ? txt : null; // placeholder helper
   const need = (val, prompt) => val || ("["+prompt+"]");
 
   const sections=[];
