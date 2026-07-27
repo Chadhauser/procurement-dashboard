@@ -11,7 +11,7 @@
   :root{
     --bg:#0e1216; --panel:#161c22; --panel2:#1c242c; --line:#2a343d;
     --ink:#eef2f4; --dim:#94a2ad; --faint:#6f7d88;
-    --match:#5fd08a; --build:#f4c560; --hard:#f08a7a; --link:#83c0ff; --lead:#c9a3f0;
+    --match:#5fd08a; --build:#f4c560; --hard:#f08a7a; --link:#83c0ff; --lead:#c9a3f0; --eb:#6fd0c0;
   }
   *{box-sizing:border-box}
   body{margin:0;background:radial-gradient(1200px 600px at 50% -200px,#19222b 0%,var(--bg) 60%);
@@ -63,8 +63,9 @@
   .legend b{color:var(--dim);font-weight:600}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:14px}
   .card.match{border-color:rgba(95,208,138,.5);box-shadow:0 0 0 1px rgba(95,208,138,.12)}
+  .card.sweet{border-color:rgba(244,197,96,.55);box-shadow:0 0 0 1px rgba(244,197,96,.18)}
   .card.closed{opacity:.6}
-  .card.closed.match{box-shadow:none;border-color:var(--line)}
+  .card.closed.match,.card.closed.sweet{box-shadow:none;border-color:var(--line)}
   .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;letter-spacing:.05em;
     text-transform:uppercase;color:var(--faint);margin-bottom:9px}
   .meta .geo{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--dim)}
@@ -74,6 +75,9 @@
   .pill.o{background:var(--link);color:#04243f}
   .pill.l{background:rgba(201,163,240,.16);color:var(--lead);border:1px solid rgba(201,163,240,.4)}
   .pill.c{background:var(--panel2);color:var(--faint);border:1px solid var(--line)}
+  .pill.eb{background:rgba(111,208,192,.16);color:var(--eb);border:1px solid rgba(111,208,192,.4)}
+  .pill.sweet{background:var(--build);color:#3a2c06}
+  .pill.gate{background:rgba(240,138,122,.16);color:var(--hard);border:1px solid rgba(240,138,122,.45);text-transform:none;letter-spacing:0}
   .pill.d-hard{background:rgba(240,138,122,.16);color:var(--hard);border:1px solid rgba(240,138,122,.4)}
   .pill.d-moderate{background:rgba(244,197,96,.14);color:var(--build);border:1px solid rgba(244,197,96,.35)}
   .pill.d-easy{background:rgba(95,208,138,.14);color:var(--match);border:1px solid rgba(95,208,138,.35)}
@@ -107,7 +111,6 @@
   footer{color:var(--faint);font-size:11px;margin-top:30px;text-align:center;line-height:1.7}
   .state{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;color:var(--dim);font-size:14px}
   .state.err{border-color:rgba(240,138,122,.4);color:#f6cfa4}
-  /* Bid workspace */
   .bidstart{display:inline-block;margin-top:14px;font-size:13px;font-weight:600;color:#04243f;
     background:var(--link);padding:8px 14px;border-radius:9px;border:0;cursor:pointer;font-family:inherit}
   .modal{position:fixed;inset:0;background:rgba(6,9,12,.74);display:none;align-items:flex-start;
@@ -177,11 +180,10 @@
 
   <footer>
     Source: <span id="src">Find a Tender &amp; Contracts Finder</span><br>
-    Draft material is a starting point, not legal or financial advice &mdash; confirm everything against the actual notice.
+    Entity routing &amp; eligibility flags are a first-pass signal from the notice text &mdash; confirm gates against the actual tender documents before bidding.
   </footer>
 </div>
 
-<!-- Bid workspace modal -->
 <div class="modal" id="bidModal">
   <div class="sheet">
     <button class="closex" onclick="closeModal('bidModal')">&times;</button>
@@ -203,7 +205,6 @@
   </div>
 </div>
 
-<!-- Bid profile modal -->
 <div class="modal" id="profModal">
   <div class="sheet">
     <button class="closex" onclick="closeModal('profModal')">&times;</button>
@@ -227,25 +228,25 @@ const SOLO = { yes:"Buildable solo + AI", partial:"Software yes - full service n
 const DIFF = { hard:"Hard to win", moderate:"Moderate", easy:"Easy" };
 const RST = { done:{l:"on",c:"done"}, in_progress:{l:"in progress",c:"prog"}, not_started:{l:"to do",c:"todo"} };
 
-// Per-jurisdiction view config: what the stats, tabs, labels and legend say.
 const VIEW = {
   uk: {
-    lede: "UK public-sector tenders, split two ways: work IPP can bid on itself, and live contracts where a business needs help winning (your bid-support leads).",
+    lede: "UK public-sector tenders, routed to the right bidding entity and sorted so the WINNABLE ones — eligible AND deliverable — rise to the top. Gated ones sink to the bottom with the reason shown.",
     source: "Find a Tender &amp; Contracts Finder &middot; &copy; Crown copyright, OGL v3.0",
-    legend: "<b>FOR IPP</b> finance / data / advisory work you can bid &middot; <b>LEAD</b> a live SME-suitable contract &mdash; a firm to approach with bid help &middot; <b>OPEN</b> accepting bids &middot; <b>BUILD</b> buildable solo &middot; <b>AWARDED</b> already won",
+    legend: "<b>&#9733; SWEET SPOT</b> open, routed, no eligibility wall spotted &mdash; look here first &middot; <b>FOR IPP</b> finance / accounting (needs the CIMA credential) &middot; <b>FOR EDWARDS BROS</b> consultancy / data / advisory (wins on trading history) &middot; <b>GATE</b> a stated eligibility wall &mdash; check it &middot; <b>LEAD</b> bid-support opportunity",
     stats: [
-      { f:"all",  id:"total", label:"tenders seen" },
-      { f:"open", id:"open",  label:"open to bid now", color:"var(--link)" },
-      { f:"ipp",  id:"ipp",   label:"for IPP to bid",  color:"var(--match)" },
-      { f:"lead", id:"lead",  label:"bid-support leads", color:"var(--lead)" },
+      { f:"all",   id:"total", label:"tenders seen" },
+      { f:"open",  id:"open",  label:"open now", color:"var(--link)" },
+      { f:"sweet", id:"sweet", label:"sweet spot", color:"var(--build)" },
+      { f:"gated", id:"gated", label:"gated (check/skip)", color:"var(--hard)" },
     ],
     tabs: [
-      { f:"ipp",  label:"For IPP to bid" },
-      { f:"lead", label:"Bid-support leads" },
-      { f:"build", label:"Buildable" },
-      { f:"all",  label:"All" },
+      { f:"sweet", label:"\u2605 Sweet spot" },
+      { f:"ipp",   label:"For IPP" },
+      { f:"eb",    label:"For Edwards Bros" },
+      { f:"lead",  label:"Leads" },
+      { f:"all",   label:"All" },
     ],
-    default: "ipp",
+    default: "sweet",
   },
   us: {
     lede: "Every US-government contract performed in the UK, indexed daily by place of performance. The USAF bases are the core; <b>Wider UK</b> is everything else &mdash; the London embassy and beyond &mdash; your expansion view.",
@@ -267,7 +268,7 @@ const VIEW = {
   },
 };
 
-let TENDERS = [], PACKS = {}, CURRENT_J = "uk", CURRENT_F = "ipp";
+let TENDERS = [], PACKS = {}, CURRENT_J = "uk", CURRENT_F = "sweet";
 
 function esc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 function money(min,max,cur){const sym=cur==="USD"?"$":"&pound;";const f=n=>sym+Number(n).toLocaleString("en-GB",{maximumFractionDigits:0});
@@ -287,10 +288,7 @@ function geoOk(t){
   if(!g) return true;
   return g.includes("england")||g.includes("scotland")||g.includes("wales")||g.includes("ukwide")||g.includes("unitedkingdom");
 }
-// A bid-support lead: a live, SME-suitable UK contract a business could be helped to win.
 function isLead(t){return jur(t)==="uk" && isOpen(t) && t.cls_sme_suitable===true && geoOk(t);}
-// A named USAF base in the UK: the core of the US index. Everything else UK-performed
-// is "wider UK" (embassy etc.) — the expansion view. Detected from place/title text.
 const US_BASES = ["lakenheath","mildenhall","alconbury","molesworth","croughton","feltwell","fairford","menwith","rafl","rafm"];
 function isUsBase(t){
   const hay = ((t.region||"")+" "+(t.title||"")+" "+(t.buyer_name||"")).toLowerCase();
@@ -299,7 +297,33 @@ function isUsBase(t){
 function jur(t){return t.jurisdiction || "uk";}
 function subset(){return TENDERS.filter(t=>jur(t)===CURRENT_J);}
 
-// minimal markdown -> html for stored bid-pack text
+const FINANCE_KEYS = ["accounting","accountancy","audit","bookkeep","payroll","taxation"," tax ",
+  "management account","financial report","financial model","financial statement","statutory account",
+  "cost allocation","housing revenue","hra","ledger","vat return","finance function","financial compliance","actuar"];
+function routeEntity(t){
+  const hay = (" "+[t.title,t.cls_category,t.cls_sector,(t.cls_tech_tags||[]).join(" "),t.cls_reasoning].filter(Boolean).join(" ")+" ").toLowerCase();
+  return FINANCE_KEYS.some(k=>hay.includes(k)) ? "ipp" : "eb";
+}
+function eligibilityGate(t){
+  const hay = (" "+[t.title,t.cls_reasoning,t.description,t.build_blockers,t.cls_framework_route].filter(Boolean).join("  ")+" ").toLowerCase();
+  if(/salesforce partner|microsoft partner|must be an? (accredited|approved|certified|registered) partner|partner status|partner accreditation|gold partner|silver partner/.test(hay))
+    return {gated:true,reason:"specialist partner accreditation"};
+  if(/iso ?27001|iso ?9001|iso ?14001|must hold iso|iso certification required/.test(hay))
+    return {gated:true,reason:"ISO certification required"};
+  if(/minimum (annual )?turnover|annual turnover of (at least )?&pound;|turnover of at least|2 ?x (the )?contract value|two times the contract value|minimum turnover requirement/.test(hay))
+    return {gated:true,reason:"minimum turnover"};
+  if(/trading for at least|established for (at least )?\d+ ?years|minimum of \d+ ?years|\d+ ?years'? (relevant )?(trading|experience) (is )?required|at least \d+ ?years'? experience/.test(hay))
+    return {gated:true,reason:"years-trading / track record"};
+  if(/must be on (the|an) framework|framework members? only|already appointed to|existing framework supplier|call-?off from (the|an) framework/.test(hay))
+    return {gated:true,reason:"framework membership"};
+  if(/reference sites?|three (comparable|similar) (contracts|projects|references)|comparable contracts of similar|evidence of \d+ similar contracts/.test(hay))
+    return {gated:true,reason:"reference sites / comparables"};
+  return {gated:false,reason:""};
+}
+function gateOf(t){ return (jur(t)==="uk" && t.matched_filter) ? eligibilityGate(t) : {gated:false,reason:""}; }
+function sweetSpot(t){ return jur(t)==="uk" && !!t.matched_filter && isOpen(t) && !gateOf(t).gated; }
+function tierOf(t){ if(sweetSpot(t)) return 0; if(gateOf(t).gated) return 2; return 1; }
+
 function md(src){
   const lines=esc(src||"").split("\n");const out=[];let inList=false;
   const inl=s=>s.replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");
@@ -318,6 +342,9 @@ function md(src){
 function ukCard(t){
   const buildable = t.build_solo==="yes"||t.build_solo==="partial";
   const open = isOpen(t), closed = isClosed(t), lead = isLead(t);
+  const route = t.matched_filter ? routeEntity(t) : null;
+  const gate = gateOf(t);
+  const sweet = sweetSpot(t);
   const tags=(t.cls_tech_tags||[]).filter(Boolean).map(x=>`<span class="tag">${esc(x)}</span>`).join("");
   let build="";
   if(t.build_assessed && t.build_solo && t.build_solo!=="no"){
@@ -340,11 +367,15 @@ function ukCard(t){
   const closedPill = closed?`<span class="pill c">${isAward(t)?"AWARDED":"CLOSED"}</span>`:"";
   const srcName = t.source==="contracts_finder"?"Contracts Finder":"Find a Tender";
   const startBid = isAward(t) ? "" : `<button class="bidstart" onclick='openBid(${JSON.stringify(String(t.notice_id))})'>Start bid &rarr;</button>`;
-  return `<article class="card ${t.matched_filter?'match':''} ${closed?'closed':''}">
+  const cardClass = sweet ? "sweet" : (t.matched_filter ? "match" : "");
+  return `<article class="card ${cardClass} ${closed?'closed':''}">
     <div class="meta">
       ${open?'<span class="pill o">OPEN</span>':''}
       ${closedPill}
-      ${t.matched_filter?'<span class="pill m">FOR IPP</span>':''}
+      ${sweet?'<span class="pill sweet">&#9733; SWEET SPOT</span>':''}
+      ${route==="ipp"?'<span class="pill m">FOR IPP</span>':''}
+      ${route==="eb"?'<span class="pill eb">FOR EDWARDS BROS</span>':''}
+      ${gate.gated?`<span class="pill gate">GATE: ${esc(gate.reason)}</span>`:''}
       ${lead?'<span class="pill l">LEAD</span>':''}
       ${buildable?'<span class="pill b">BUILD</span>':''}
       ${diff}
@@ -381,7 +412,10 @@ function cardHTML(t){return jur(t)==="us"?usCard(t):ukCard(t);}
 function passesFilter(t,f){
   if(f==="all") return true;
   if(f==="open") return isOpen(t);
-  if(f==="ipp") return !!t.matched_filter;
+  if(f==="sweet") return sweetSpot(t);
+  if(f==="gated") return gateOf(t).gated;
+  if(f==="ipp") return !!t.matched_filter && routeEntity(t)==="ipp";
+  if(f==="eb") return !!t.matched_filter && routeEntity(t)==="eb";
   if(f==="lead") return isLead(t);
   if(f==="build") return t.build_solo==="yes"||t.build_solo==="partial";
   if(f==="bases") return isUsBase(t);
@@ -406,9 +440,12 @@ function emptyMsg(f){
     if(f==="award") return "No award notices in the current window yet.";
     return "Nothing in this view yet.";
   }
-  if(f==="ipp") return "No live contracts for IPP to bid on right now. Untick 'hide closed' to see awarded ones as demand signals, or check the daily run later.";
+  if(f==="sweet") return "No sweet-spot tenders live right now &mdash; these are open, routed to an entity, and with no eligibility wall spotted in the notice. The daily run adds more each morning.";
+  if(f==="ipp") return "No live finance / accounting tenders routed to IPP right now. Untick 'hide closed' to see awarded ones as demand signals.";
+  if(f==="eb") return "No live consultancy / data / advisory tenders routed to Edwards Bros right now. Untick 'hide closed' to see awarded ones.";
+  if(f==="gated") return "Nothing flagged as gated in the current batch &mdash; no clearly-stated eligibility walls spotted. (Always confirm against the actual tender documents.)";
   if(f==="lead") return "No open bid-support leads right now. These are live, SME-suitable contracts you could approach a business about helping them win &mdash; the daily run adds more each morning.";
-  if(f==="open") return "No open tenders in the current batch &mdash; most of what's in right now are awards. Open ones appear here as the daily run pulls them.";
+  if(f==="open") return "No open tenders in the current batch. Open ones appear here as the daily run pulls them.";
   if(document.getElementById("hideClosed").checked) return "Nothing live in this view right now. Closed &amp; awarded notices are hidden &mdash; untick the box above to see them as demand signals.";
   return "Nothing in this view yet. The daily run will fill it.";
 }
@@ -475,15 +512,13 @@ function renderReadiness(rows){
     `<div class="rsum">${done} on &middot; ${prog} in progress &middot; ${rows.length-done-prog} still to do</div>${items}`;
 }
 
-// ---- Bid workspace -------------------------------------------------------
-// Standard, reusable answers (filled once). Stored in this browser.
 const PROFILE_FIELDS = [
-  ["orgOverview","About IPP (overview)","One paragraph on who IPP is and what it does."],
-  ["capability","Capability & services","The services relevant to bids — finance, data, advisory."],
-  ["experience","Relevant experience","Track record / examples. Add to this as you win work."],
+  ["orgOverview","About your firm (overview)","One paragraph on who the bidding entity is and what it does."],
+  ["capability","Capability & services","The services relevant to bids — finance, data, advisory, project delivery."],
+  ["experience","Relevant experience","Track record / delivered projects. Add to this as you win work."],
   ["approach","Approach & methodology","How you typically deliver — your standard method."],
-  ["team","Team & qualifications","Key people and credentials (CIMA / ACMA CGMA etc.)."],
-  ["quality","Quality, assurance & compliance","QA, insurance (PI), data handling, ICO registration."],
+  ["team","Team & qualifications","Key people and credentials (CIMA / ACMA CGMA, project experience etc.)."],
+  ["quality","Quality, assurance & compliance","QA, insurance (PI), data handling, ICO registration, Cyber Essentials."],
   ["socialValue","Social value","Your standard social value statement."],
   ["pricing","Pricing approach","How you typically price — day rate, fixed fee, retainers."],
 ];
@@ -504,11 +539,10 @@ function saveProfile(){
   catch(e){ document.getElementById("profSaved").textContent="Couldn't save in this browser"; }
 }
 
-// Per-tender questions.
 const BID_FIELDS = [
   ["requirement","What they need (the requirement)","Summarise what the buyer is asking for. Pre-filled from the notice — refine it."],
   ["criteria","Evaluation criteria & weighting","From the tender docs — what they score, and how much each is worth."],
-  ["fit","Why IPP fits this one","The specific reasons IPP is a strong fit for THIS contract."],
+  ["fit","Why we fit this one","The specific reasons the bidding entity is a strong fit for THIS contract."],
   ["winThemes","Win themes (2–3)","The handful of points you want to land throughout the bid."],
 ];
 function bidKey(id){ return "ipp_bid_draft_"+id; }
@@ -518,8 +552,10 @@ function openBid(noticeId){
   const t = TENDERS.find(x=>String(x.notice_id)===String(noticeId));
   if(!t) return;
   CURRENT_BID=t;
+  const entity = routeEntity(t)==="ipp" ? "Insight Professional Partners" : "Edwards Bros (Spaldwick) Ltd";
   document.getElementById("bidTenderLine").innerHTML =
-    `<strong>${esc(t.title||"")}</strong><br>${esc(t.buyer_name||"")} &middot; ${money(t.value_min,t.value_max,t.currency)}${t.deadline_date?" &middot; "+dl(t.deadline_date):""}`;
+    `<strong>${esc(t.title||"")}</strong><br>${esc(t.buyer_name||"")} &middot; ${money(t.value_min,t.value_max,t.currency)}${t.deadline_date?" &middot; "+dl(t.deadline_date):""}`+
+    `<br><span style="color:var(--${routeEntity(t)==="ipp"?"match":"eb"})">Routed to: ${esc(entity)}</span>`;
   let saved={};
   try{ saved=JSON.parse(localStorage.getItem(bidKey(noticeId)))||{}; }catch(e){}
   const prefill={
@@ -540,9 +576,6 @@ function openBid(noticeId){
   openModal("bidModal");
 }
 
-// Heuristic requirements extractor: pull the scoring, questions, must-haves and
-// key dates out of pasted tender text. Deterministic, first-pass — the person
-// still sanity-checks against the actual document.
 function extractReqs(){
   const raw=(document.getElementById("tenderPaste").value||"").trim();
   const out=document.getElementById("extractOut");
@@ -594,13 +627,14 @@ function genDraft(){
   try{ localStorage.setItem(bidKey(t.notice_id), JSON.stringify(inp)); document.getElementById("bidSaved").textContent="Saved \u2713"; }catch(e){}
 
   const buyer = t.buyer_name || "the authority";
+  const entity = routeEntity(t)==="ipp" ? "Insight Professional Partners" : "Edwards Bros (Spaldwick) Ltd";
   const need = (val, prompt) => val || ("["+prompt+"]");
 
   const sections=[];
   sections.push(["Executive summary",
-    need(p.orgOverview,"Add your IPP overview in My bid profile") + "\n\n" +
-    "Insight Professional Partners is pleased to submit this proposal to " + buyer + " for " +
-    (t.title||"this requirement") + ". " + need(inp.fit,"Add why IPP fits this one in the form")]);
+    need(p.orgOverview,"Add your firm overview in My bid profile") + "\n\n" +
+    entity + " is pleased to submit this proposal to " + buyer + " for " +
+    (t.title||"this requirement") + ". " + need(inp.fit,"Add why you fit this one in the form")]);
   sections.push(["Our understanding of the requirement", need(inp.requirement,"Summarise the requirement in the form")]);
   if(inp.criteria) sections.push(["How we meet your evaluation criteria", inp.criteria]);
   sections.push(["Our capability", need(p.capability,"Add capability in My bid profile")]);
@@ -610,13 +644,13 @@ function genDraft(){
   sections.push(["Quality, assurance & compliance", need(p.quality,"Add quality & assurance in My bid profile")]);
   if(p.socialValue) sections.push(["Social value", p.socialValue]);
   sections.push(["Pricing", need(p.pricing,"Add pricing approach in My bid profile")]);
-  if(inp.winThemes) sections.push(["Why "+buyer+" should choose IPP", inp.winThemes]);
+  if(inp.winThemes) sections.push(["Why "+buyer+" should choose us", inp.winThemes]);
 
-  LAST_DRAFT={ title:t.title||"Bid proposal", buyer, deadline:t.deadline_date, sections };
+  LAST_DRAFT={ title:t.title||"Bid proposal", buyer, entity, deadline:t.deadline_date, sections };
 
   const renderP = b => esc(b).replace(/\[(.+?)\]/g,'<span class="pmuted">[$1]</span>');
   const html = `<h1>${esc(t.title||"Bid proposal")}</h1>`+
-    `<p class="pmuted">Proposal to ${esc(buyer)}${t.deadline_date?" &middot; "+esc(dl(t.deadline_date)):""}</p>`+
+    `<p class="pmuted">${esc(entity)} &mdash; proposal to ${esc(buyer)}${t.deadline_date?" &middot; "+esc(dl(t.deadline_date)):""}</p>`+
     sections.map(([h,b])=>`<h2>${esc(h)}</h2><p>${renderP(b)}</p>`).join("");
   const anyGaps = sections.some(([h,b])=>/\[.+?\]/.test(b));
   document.getElementById("draftWrap").innerHTML =
@@ -628,16 +662,16 @@ function genDraft(){
 
 function downloadWord(){
   if(!LAST_DRAFT) return;
-  const {title,buyer,deadline,sections}=LAST_DRAFT;
+  const {title,buyer,entity,deadline,sections}=LAST_DRAFT;
   const body = `<h1 style="font-family:Georgia,serif;font-size:20pt">${esc(title)}</h1>`+
-    `<p style="color:#555"><i>Proposal to ${esc(buyer)}${deadline?" &middot; "+esc(dl(deadline)):""}</i></p>`+
+    `<p style="color:#555"><i>${esc(entity||"")} &mdash; proposal to ${esc(buyer)}${deadline?" &middot; "+esc(dl(deadline)):""}</i></p>`+
     sections.map(([h,b])=>`<h2 style="font-family:Georgia,serif;font-size:13pt">${esc(h)}</h2><p>${esc(b).replace(/\n/g,"<br>")}</p>`).join("");
   const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)}</title></head>`+
     `<body style="font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.5">${body}</body></html>`;
   const blob=new Blob(["\ufeff",doc],{type:"application/msword"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
-  a.download=(title||"IPP-bid").replace(/[^a-z0-9]+/gi,"-").replace(/^-+|-+$/g,"").slice(0,60)+".doc";
+  a.download=(title||"bid").replace(/[^a-z0-9]+/gi,"-").replace(/^-+|-+$/g,"").slice(0,60)+".doc";
   document.body.appendChild(a); a.click();
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 100);
 }
@@ -658,6 +692,8 @@ async function load(){
     const packs=pr.ok?await pr.json():[];
     packs.forEach(p=>{PACKS[p.notice_id]=p;});
     TENDERS.sort((a,b)=>{
+      const ta=tierOf(a), tb=tierOf(b);
+      if(ta!==tb) return ta-tb;
       const da=new Date(a.published_date||0), db=new Date(b.published_date||0);
       if(db-da!==0) return db-da;
       const x=rank(a),y=rank(b);
@@ -674,7 +710,6 @@ async function load(){
 }
 document.querySelectorAll("#seg button").forEach(b=>b.addEventListener("click",()=>setJurisdiction(b.dataset.j)));
 document.getElementById("hideClosed").addEventListener("change",()=>render(CURRENT_F));
-// Close a modal by clicking its dark backdrop, or pressing Escape.
 document.querySelectorAll(".modal").forEach(m=>m.addEventListener("click",e=>{ if(e.target===m) m.classList.remove("open"); }));
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open")); });
 load();
