@@ -150,6 +150,7 @@
   .exrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
   .exupload{cursor:pointer;margin:0}
   .exupload input{display:none}
+  .exsum{font-size:12.5px;color:#cdd6dd;font-style:italic;margin:10px 0;padding:8px 10px;background:rgba(131,192,255,.08);border-left:2px solid var(--link);border-radius:4px}
 </style>
 </head>
 <body>
@@ -198,6 +199,7 @@
       <div class="exrow">
         <label class="btn ghost exupload">&#128206; Upload PDF / Word / text<input type="file" id="tenderFile" accept=".pdf,.doc,.docx,.txt" onchange="readTenderFile(this.files[0])"></label>
         <button class="btn ghost" onclick="extractReqs()">Extract requirements</button>
+        <button class="btn ghost" onclick="extractAI()">&#10024; AI extract (deeper read)</button>
         <span class="hint" id="fileStatus"></span>
       </div>
       <div id="extractOut"></div>
@@ -635,6 +637,55 @@ async function readTenderFile(file){
   }
 }
 
+// Shared renderer for both the keyword extractor and the AI extractor.
+function renderExtract(e, summary){
+  LAST_EXTRACT={
+    critical:e.critical||[], priorities:e.priorities||[], compliance:e.compliance||[],
+    questions:e.questions||[], dates:e.dates||[], stats:e.stats||[]
+  };
+  const le=LAST_EXTRACT;
+  const out=document.getElementById("extractOut");
+  const grp=(title,arr)=>arr&&arr.length?`<div class="exgroup"><h4>${title} (${arr.length})</h4><ul>${arr.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
+  const any=le.critical.length||le.priorities.length||le.compliance.length||le.stats.length||le.dates.length||le.questions.length;
+  out.innerHTML = any ?
+    (summary?`<div class="exsum">${esc(summary)}</div>`:"")+
+    grp("Critical bid-decision info",le.critical)+
+    grp("Commissioner's priorities (requirements)",le.priorities)+
+    grp("Compliance (non-negotiables)",le.compliance)+
+    grp("Bid questions to answer",le.questions)+
+    grp("Dates &amp; timelines",le.dates)+
+    grp("Statistics &amp; figures",le.stats)+
+    `<button class="btn link" onclick="useExtract()" style="margin-top:12px">Pull into the bid form &darr;</button>`
+    : '<div class="hint">Nothing obvious found. Try the AI extract for a deeper read, or fill the form manually below.</div>';
+}
+
+// AI extractor: sends tender text to the extract-ai edge function (reads it with
+// Claude server-side, key stays on the server) and renders the comprehended result.
+async function extractAI(){
+  const raw=(document.getElementById("tenderPaste").value||"").trim();
+  const out=document.getElementById("extractOut");
+  const status=document.getElementById("fileStatus");
+  if(!raw){ out.innerHTML='<div class="hint">Paste or upload some tender text first.</div>'; return; }
+  out.innerHTML='<div class="hint">Reading the tender with AI\u2026 (a few seconds)</div>';
+  try{
+    const r=await fetch(SUPABASE_URL+"/functions/v1/extract-ai",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json", apikey:ANON, Authorization:"Bearer "+ANON },
+      body:JSON.stringify({text:raw})
+    });
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||!d.ok){
+      out.innerHTML='<div class="hint">AI extract unavailable ('+esc((d&&(d.message||d.error))||("HTTP "+r.status))+'). The keyword \u201cExtract requirements\u201d still works.</div>';
+      return;
+    }
+    const ex=d.extract||{};
+    renderExtract(ex, ex.summary);
+    if(d.truncated && status) status.textContent="Note: the tender was long \u2014 AI read the first part only.";
+  }catch(err){
+    out.innerHTML='<div class="hint">Couldn\u2019t reach the AI extractor ('+esc(err&&err.message?err.message:"error")+'). The keyword \u201cExtract requirements\u201d still works.</div>';
+  }
+}
+
 function extractReqs(){
   const raw=(document.getElementById("tenderPaste").value||"").trim();
   const out=document.getElementById("extractOut");
@@ -653,22 +704,8 @@ function extractReqs(){
     if(/\b(contract value|estimated value|total value|budget|value of the contract|framework|lot \d|number of lots|contract length|extension|renewal|incumbent|tupe|mobilisation)\b/.test(low)||/(&pound;|£|\$)\s?[\d,]{3,}/.test(l)){ critical.push(l); placed=true; }
     if(!placed && (/\d{1,3}\s?%/.test(l)||/(&pound;|£|\$)\s?[\d,]{2,}/.test(l)||/\b\d{3,}\b/.test(l))){ stats.push(l); }
   });
-  LAST_EXTRACT={
-    critical:clip(critical), priorities:clip(priorities), compliance:clip(compliance),
-    stats:clip(stats), dates:clip(dates), questions:clip(questions)
-  };
-  const grp=(title,arr)=>arr.length?`<div class="exgroup"><h4>${title} (${arr.length})</h4><ul>${arr.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
-  const e=LAST_EXTRACT;
-  const any=e.critical.length||e.priorities.length||e.compliance.length||e.stats.length||e.dates.length||e.questions.length;
-  out.innerHTML = any ?
-    grp("Critical bid-decision info",e.critical)+
-    grp("Commissioner's priorities (requirements)",e.priorities)+
-    grp("Compliance (non-negotiables)",e.compliance)+
-    grp("Bid questions to answer",e.questions)+
-    grp("Dates &amp; timelines",e.dates)+
-    grp("Statistics &amp; figures",e.stats)+
-    `<button class="btn link" onclick="useExtract()" style="margin-top:12px">Pull into the bid form &darr;</button>`
-    : '<div class="hint">Nothing obvious found. This works best pasted straight from the tender or specification document &mdash; you can still fill the form manually below.</div>';
+  const e={ critical:clip(critical), priorities:clip(priorities), compliance:clip(compliance), stats:clip(stats), dates:clip(dates), questions:clip(questions) };
+  renderExtract(e);
 }
 
 function useExtract(){
