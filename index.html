@@ -583,22 +583,31 @@ function extractReqs(){
   const lines=raw.split(/\r?\n/).map(l=>l.replace(/\s+/g," ").trim()).filter(l=>l.length>3);
   const clip=a=>[...new Set(a)].slice(0,15);
   const dateRe=/(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4})/i;
-  const weightings=[],questions=[],musts=[],dates=[];
+  const critical=[],priorities=[],compliance=[],stats=[],dates=[],questions=[];
   lines.forEach(l=>{
     const low=l.toLowerCase();
-    if(/\d{1,3}\s?%/.test(l)||/\bweight(ing|ed|s)?\b/.test(low)||/\b(scored|scoring|marks? out of|evaluation criteria|price\/quality)\b/.test(low)) weightings.push(l);
-    if(/\?$/.test(l)||/\b(please (describe|provide|explain|detail|outline|confirm|demonstrate|set out|give)|how (do|will|would|can) you|describe how|outline your|detail your|tell us about)\b/.test(low)) questions.push(l);
-    if(/\b(must|shall|mandatory|is required|are required|essential|minimum requirement|you will need to|it is a requirement)\b/.test(low)) musts.push(l);
-    if(/(deadline|closing date|clarification|submission date|return by|closes|tender return|bid due)/.test(low)&&dateRe.test(l)) dates.push(l);
+    let placed=false;
+    if(/\?$/.test(l)||/\b(please (describe|provide|explain|detail|outline|confirm|demonstrate|set out|give)|how (do|will|would|can) you|describe how|outline your|detail your|tell us about)\b/.test(low)){ questions.push(l); placed=true; }
+    if(/(deadline|closing date|clarification|submission date|return by|closes|tender return|bid due|start date|commencement|contract (start|period|term|duration)|milestone|timeline|go-?live)/.test(low)&&(dateRe.test(l)||/\bweeks?\b|\bmonths?\b|\byears?\b/.test(low))){ dates.push(l); placed=true; }
+    if(/\b(must|shall|mandatory|non-negotiable|is required|are required|essential|minimum requirement|it is a requirement|pass\/fail|fail if|will be rejected)\b/.test(low)){ compliance.push(l); placed=true; }
+    if(/\d{1,3}\s?%/.test(l)||/\bweight(ing|ed|s)?\b/.test(low)||/\b(scored|scoring|marks? out of|evaluation criteria|award criteria|price\/quality|prioritis|we (are )?looking for|we value|should|preferred|desirable|it is important)\b/.test(low)){ priorities.push(l); placed=true; }
+    if(/\b(contract value|estimated value|total value|budget|value of the contract|framework|lot \d|number of lots|contract length|extension|renewal|incumbent|tupe|mobilisation)\b/.test(low)||/(&pound;|£|\$)\s?[\d,]{3,}/.test(l)){ critical.push(l); placed=true; }
+    if(!placed && (/\d{1,3}\s?%/.test(l)||/(&pound;|£|\$)\s?[\d,]{2,}/.test(l)||/\b\d{3,}\b/.test(l))){ stats.push(l); }
   });
-  LAST_EXTRACT={weightings:clip(weightings),questions:clip(questions),musts:clip(musts),dates:clip(dates)};
+  LAST_EXTRACT={
+    critical:clip(critical), priorities:clip(priorities), compliance:clip(compliance),
+    stats:clip(stats), dates:clip(dates), questions:clip(questions)
+  };
   const grp=(title,arr)=>arr.length?`<div class="exgroup"><h4>${title} (${arr.length})</h4><ul>${arr.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
-  const any=LAST_EXTRACT.weightings.length||LAST_EXTRACT.questions.length||LAST_EXTRACT.musts.length||LAST_EXTRACT.dates.length;
+  const e=LAST_EXTRACT;
+  const any=e.critical.length||e.priorities.length||e.compliance.length||e.stats.length||e.dates.length||e.questions.length;
   out.innerHTML = any ?
-    grp("Scoring &amp; weightings",LAST_EXTRACT.weightings)+
-    grp("Questions to answer",LAST_EXTRACT.questions)+
-    grp("Must-haves / mandatory",LAST_EXTRACT.musts)+
-    grp("Key dates",LAST_EXTRACT.dates)+
+    grp("Critical bid-decision info",e.critical)+
+    grp("Commissioner's priorities (requirements)",e.priorities)+
+    grp("Compliance (non-negotiables)",e.compliance)+
+    grp("Bid questions to answer",e.questions)+
+    grp("Dates &amp; timelines",e.dates)+
+    grp("Statistics &amp; figures",e.stats)+
     `<button class="btn link" onclick="useExtract()" style="margin-top:12px">Pull into the bid form &darr;</button>`
     : '<div class="hint">Nothing obvious found. This works best pasted straight from the tender or specification document &mdash; you can still fill the form manually below.</div>';
 }
@@ -610,12 +619,15 @@ function useExtract(){
   const crit=ta("criteria"), req=ta("requirement");
   if(crit){
     let v=[];
-    if(e.weightings.length) v.push(e.weightings.join("\n"));
+    if(e.priorities.length) v.push("Commissioner's priorities / scored criteria:\n- "+e.priorities.join("\n- "));
     if(e.questions.length) v.push("Questions to address:\n- "+e.questions.join("\n- "));
     if(v.length) crit.value=v.join("\n\n");
   }
-  if(req && e.musts.length && !req.value.trim()){
-    req.value="Mandatory requirements:\n- "+e.musts.join("\n- ");
+  if(req && !req.value.trim()){
+    let v=[];
+    if(e.compliance.length) v.push("Compliance (non-negotiables):\n- "+e.compliance.join("\n- "));
+    if(e.critical.length) v.push("Critical bid-decision info:\n- "+e.critical.join("\n- "));
+    if(v.length) req.value=v.join("\n\n");
   }
   document.getElementById("bidSaved").textContent="Pulled into the form \u2713";
 }
