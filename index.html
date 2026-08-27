@@ -26,6 +26,7 @@
   .seg button.on{background:var(--ink);color:#0e1216}
   .lede{color:var(--dim);font-size:14px;max-width:640px;margin-bottom:6px}
   .runline{color:var(--faint);font-size:12px;margin-bottom:22px}
+  .feedwarn{font-size:12.5px;color:#f6cfa4;background:rgba(240,138,122,.1);border:1px solid rgba(240,138,122,.35);border-radius:9px;padding:9px 12px;margin:-8px 0 20px;line-height:1.5}
   .stats{display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap}
   .stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px;min-width:120px;flex:1}
   .stat b{font-family:"Fraunces",serif;font-size:34px;font-weight:600;display:block;line-height:1}
@@ -165,6 +166,7 @@
 
   <div class="lede" id="lede">Loading&hellip;</div>
   <div class="runline" id="updated"></div>
+  <div class="feedwarn" id="feedWarn" style="display:none"></div>
 
   <div class="stats" id="stats"></div>
 
@@ -497,11 +499,41 @@ function buildControls(j){
   document.querySelectorAll("#tabs button").forEach(b=>b.addEventListener("click",()=>render(b.dataset.f)));
 }
 
+// Newest published_date across a jurisdiction's notices, in days ago (null if none).
+function feedAgeDays(j){
+  const rows=TENDERS.filter(t=>jur(t)===j && t.published_date);
+  if(!rows.length) return null;
+  const newest=Math.max(...rows.map(t=>new Date(t.published_date).getTime()));
+  return Math.floor((Date.now()-newest)/86400000);
+}
+
+// If the US feed has gone quiet, the usual cause is a lapsed SAM.gov API key.
+// Surface that plainly on the US view instead of just showing an empty feed.
+function checkFeedWarning(j){
+  const el=document.getElementById("feedWarn");
+  if(!el) return;
+  if(j==="us"){
+    const age=feedAgeDays("us");
+    if(age!==null && age>=5){
+      el.innerHTML="\u26a0 The US feed hasn\u2019t updated in "+age+" days. The most likely cause is a lapsed SAM.gov API key \u2014 rotate it in your SAM.gov profile (Public API Key) and update it in Supabase.";
+      el.style.display="block";
+      return;
+    }
+    if(age===null){
+      el.innerHTML="\u26a0 No US notices are loaded yet. If this persists, check the SAM.gov API key hasn\u2019t lapsed.";
+      el.style.display="block";
+      return;
+    }
+  }
+  el.style.display="none";
+}
+
 function setJurisdiction(j){
   CURRENT_J=j;
   document.querySelectorAll("#seg button").forEach(b=>b.classList.toggle("on",b.dataset.j===j));
   buildControls(j);
   refreshStats();
+  checkFeedWarning(j);
   render(VIEW[j].default);
 }
 
