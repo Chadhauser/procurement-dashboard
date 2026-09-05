@@ -209,6 +209,7 @@
     <div id="bidForm"></div>
     <div class="sheetbar">
       <button class="btn primary" onclick="genDraft()">Build draft</button>
+      <button class="btn link" onclick="autoDraftAI()">&#10024; Auto-draft the bid (AI)</button>
       <button class="btn ghost" onclick="closeModal('bidModal')">Close</button>
       <span class="savednote" id="bidSaved"></span>
     </div>
@@ -758,6 +759,44 @@ function useExtract(){
     if(v.length) req.value=v.join("\n\n");
   }
   document.getElementById("bidSaved").textContent="Pulled into the form \u2713";
+}
+
+// Auto-draft: sends the tender + saved bid profile to the draft-ai edge function,
+// which has Claude write the tailored persuasive parts (understanding, why-we-fit,
+// win themes) and fills them into the form. The user then reviews and Builds draft.
+async function autoDraftAI(){
+  if(!CURRENT_BID) return;
+  const t=CURRENT_BID;
+  const note=document.getElementById("bidSaved");
+  const paste=document.getElementById("tenderPaste");
+  const tender={
+    title:t.title||"", buyer:t.buyer_name||"",
+    value:money(t.value_min,t.value_max,t.currency),
+    deadline:t.deadline_date||"", category:t.cls_category||"", sector:t.cls_sector||"",
+    reasoning:t.cls_reasoning||"",
+    detail:(paste?paste.value:"").slice(0,8000)
+  };
+  const profile=loadProfile();
+  const hasProfile=profile && Object.keys(profile).some(k=>(profile[k]||"").trim());
+  if(note) note.textContent=hasProfile?"Drafting with AI\u2026 (a few seconds)":"Drafting with AI\u2026 (tip: fill My bid profile for a stronger draft)";
+  try{
+    const r=await fetch(SUPABASE_URL+"/functions/v1/draft-ai",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json", apikey:ANON, Authorization:"Bearer "+ANON },
+      body:JSON.stringify({tender, profile})
+    });
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||!d.ok){ if(note) note.textContent="Auto-draft unavailable ("+esc((d&&(d.message||d.error))||("HTTP "+r.status))+")"; return; }
+    const dr=d.draft||{};
+    const ta=k=>document.querySelector('#bidForm textarea[data-k="'+k+'"]');
+    const reqTa=ta("requirement");
+    if(dr.requirement && reqTa && !reqTa.value.trim()) reqTa.value=dr.requirement;
+    if(dr.fit && ta("fit")) ta("fit").value=dr.fit;
+    if(dr.winThemes && ta("winThemes")) ta("winThemes").value=dr.winThemes;
+    if(note) note.textContent="Drafted \u2014 review the fields, then Build draft \u2713";
+  }catch(err){
+    if(note) note.textContent="Couldn\u2019t reach the AI drafter ("+esc(err&&err.message?err.message:"error")+")";
+  }
 }
 
 function genDraft(){
