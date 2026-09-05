@@ -78,6 +78,7 @@
   .pill.c{background:var(--panel2);color:var(--faint);border:1px solid var(--line)}
   .pill.eb{background:rgba(111,208,192,.16);color:var(--eb);border:1px solid rgba(111,208,192,.4)}
   .pill.sweet{background:var(--build);color:#3a2c06}
+  .pill.fit{background:#8ad0ff;color:#04243f;font-weight:700}
   .pill.gate{background:rgba(240,138,122,.16);color:var(--hard);border:1px solid rgba(240,138,122,.45);text-transform:none;letter-spacing:0}
   .pill.d-hard{background:rgba(240,138,122,.16);color:var(--hard);border:1px solid rgba(240,138,122,.4)}
   .pill.d-moderate{background:rgba(244,197,96,.14);color:var(--build);border:1px solid rgba(244,197,96,.35)}
@@ -244,15 +245,17 @@ const VIEW = {
   uk: {
     lede: "UK public-sector tenders, routed to the right bidding entity and sorted so the WINNABLE ones — eligible AND deliverable — rise to the top. Gated ones sink to the bottom with the reason shown.",
     source: "Find a Tender &amp; Contracts Finder &middot; &copy; Crown copyright, OGL v3.0",
-    legend: "<b>&#9733; SWEET SPOT</b> open, routed, no eligibility wall spotted &mdash; look here first &middot; <b>FOR IPP</b> finance / accounting (needs the CIMA credential) &middot; <b>FOR EDWARDS BROS</b> consultancy / data / advisory (wins on trading history) &middot; <b>GATE</b> a stated eligibility wall &mdash; check it &middot; <b>LEAD</b> bid-support opportunity",
+    legend: "<b>&#9733; SWEET SPOT</b> open, routed, no eligibility wall spotted &mdash; look here first &middot; <b>&#9889; BEST FIT</b> automation &amp; data/reporting &mdash; your wheelhouse &middot; <b>FOR IPP</b> finance / accounting (needs the CIMA credential) &middot; <b>FOR EDWARDS BROS</b> consultancy / data / advisory (wins on trading history) &middot; <b>GATE</b> a stated eligibility wall &mdash; check it &middot; <b>LEAD</b> bid-support opportunity",
     stats: [
       { f:"all",   id:"total", label:"tenders seen" },
       { f:"open",  id:"open",  label:"open now", color:"var(--link)" },
       { f:"sweet", id:"sweet", label:"sweet spot", color:"var(--build)" },
+      { f:"fit",   id:"fit",   label:"best fit (EB)", color:"#8ad0ff" },
       { f:"gated", id:"gated", label:"gated (check/skip)", color:"var(--hard)" },
     ],
     tabs: [
       { f:"sweet", label:"\u2605 Sweet spot" },
+      { f:"fit",   label:"\u26a1 Best fit" },
       { f:"ipp",   label:"For IPP" },
       { f:"eb",    label:"For Edwards Bros" },
       { f:"lead",  label:"Leads" },
@@ -316,6 +319,17 @@ function routeEntity(t){
   const hay = (" "+[t.title,t.cls_category,t.cls_sector,(t.cls_tech_tags||[]).join(" "),t.cls_reasoning].filter(Boolean).join(" ")+" ").toLowerCase();
   return FINANCE_KEYS.some(k=>hay.includes(k)) ? "ipp" : "eb";
 }
+
+// Edwards Bros's genuinely winnable seams: process automation / RPA, and data /
+// reporting / analytics work. ebFit flags tenders in that wheelhouse so they can
+// be surfaced to the top and badged, over and above the broad matched filter.
+const EB_FIT_KEYS = ["automation","automate","robotic process"," rpa ","intelligent automation","workflow automation","power automate","low-code","no-code","data analysis","data analytics","data processing","business intelligence","power bi"," analytics ","dashboard","data visualis","data insight","management information","reporting solution","reporting platform","data cleansing","data migration","data warehouse"];
+function ebFit(t){
+  if(jur(t)!=="uk") return false;
+  const hay=(" "+[t.title,t.cls_category,t.cls_sector,(t.cls_tech_tags||[]).join(" "),t.cls_reasoning].filter(Boolean).join(" ")+" ").toLowerCase();
+  return EB_FIT_KEYS.some(k=>hay.includes(k));
+}
+function ebFitLive(t){ return ebFit(t) && isOpen(t) && !gateOf(t).gated; }
 function eligibilityGate(t){
   const hay = (" "+[t.title,t.cls_reasoning,t.description,t.build_blockers,t.cls_framework_route].filter(Boolean).join("  ")+" ").toLowerCase();
   if(/salesforce partner|microsoft partner|must be an? (accredited|approved|certified|registered) partner|partner status|partner accreditation|gold partner|silver partner/.test(hay))
@@ -334,7 +348,7 @@ function eligibilityGate(t){
 }
 function gateOf(t){ return (jur(t)==="uk" && t.matched_filter) ? eligibilityGate(t) : {gated:false,reason:""}; }
 function sweetSpot(t){ return jur(t)==="uk" && !!t.matched_filter && isOpen(t) && !gateOf(t).gated; }
-function tierOf(t){ if(sweetSpot(t)) return 0; if(gateOf(t).gated) return 2; return 1; }
+function tierOf(t){ if(sweetSpot(t) || ebFitLive(t)) return 0; if(gateOf(t).gated) return 2; return 1; }
 
 function md(src){
   const lines=esc(src||"").split("\n");const out=[];let inList=false;
@@ -385,6 +399,7 @@ function ukCard(t){
       ${open?'<span class="pill o">OPEN</span>':''}
       ${closedPill}
       ${sweet?'<span class="pill sweet">&#9733; SWEET SPOT</span>':''}
+      ${ebFitLive(t)?'<span class="pill fit">&#9889; BEST FIT</span>':''}
       ${route==="ipp"?'<span class="pill m">FOR IPP</span>':''}
       ${route==="eb"?'<span class="pill eb">FOR EDWARDS BROS</span>':''}
       ${gate.gated?`<span class="pill gate">GATE: ${esc(gate.reason)}</span>`:''}
@@ -428,6 +443,7 @@ function passesFilter(t,f){
   if(f==="gated") return gateOf(t).gated;
   if(f==="ipp") return !!t.matched_filter && routeEntity(t)==="ipp";
   if(f==="eb") return !!t.matched_filter && routeEntity(t)==="eb";
+  if(f==="fit") return ebFitLive(t);
   if(f==="lead") return isLead(t);
   if(f==="build") return t.build_solo==="yes"||t.build_solo==="partial";
   if(f==="bases") return isUsBase(t);
@@ -455,6 +471,7 @@ function emptyMsg(f){
   if(f==="sweet") return "No sweet-spot tenders live right now &mdash; these are open, routed to an entity, and with no eligibility wall spotted in the notice. The daily run adds more each morning.";
   if(f==="ipp") return "No live finance / accounting tenders routed to IPP right now. Untick 'hide closed' to see awarded ones as demand signals.";
   if(f==="eb") return "No live consultancy / data / advisory tenders routed to Edwards Bros right now. Untick 'hide closed' to see awarded ones.";
+  if(f==="fit") return "No automation or data/reporting tenders live right now &mdash; these are your strongest-fit seams, so they'll be badged and lifted to the top when they land. The daily run adds more each morning.";
   if(f==="gated") return "Nothing flagged as gated in the current batch &mdash; no clearly-stated eligibility walls spotted. (Always confirm against the actual tender documents.)";
   if(f==="lead") return "No open bid-support leads right now. These are live, SME-suitable contracts you could approach a business about helping them win &mdash; the daily run adds more each morning.";
   if(f==="open") return "No open tenders in the current batch. Open ones appear here as the daily run pulls them.";
