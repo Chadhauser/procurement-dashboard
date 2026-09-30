@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bid Triage &middot; Edwards Bros</title>
+<style>
+:root{--bg:#0e1216;--panel:#161c22;--line:#2a343d;--ink:#eef2f4;--dim:#94a2ad;--link:#83c0ff;--match:#5fd08a;--build:#f4c560;--hard:#f08a7a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5}
+.wrap{max-width:820px;margin:0 auto;padding:32px 18px 80px}
+h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bottom:20px}
+.sub a{color:var(--link)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:12px}
+.card h3{font-size:16px;margin:0 0 4px;line-height:1.3}.card h3 a{color:var(--ink);text-decoration:none}.card h3 a:hover{color:var(--link)}
+.line{font-size:13px;color:var(--dim);margin-bottom:4px}.line b{color:var(--ink)}
+.btn{background:transparent;border:1px solid var(--line);color:var(--link);border-radius:8px;padding:7px 13px;font:inherit;font-size:13px;cursor:pointer;margin-top:8px}
+.btn:hover{border-color:var(--link)}.btn:disabled{opacity:.6;cursor:default}
+.box{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13px}
+.v{font-weight:700;font-size:14px}.v.bid{color:var(--match)}.v.nobid{color:var(--hard)}.v.maybe{color:var(--build)}
+.row{margin-top:5px}.row b{color:var(--ink)}.hint{color:var(--dim)}
+.state{color:var(--dim);padding:20px 0}
+</style></head><body>
+<div class="wrap">
+<h1>Bid Triage</h1>
+<div class="sub">Open UK tenders. Tap &ldquo;Should we bid?&rdquo; for an instant Edwards Bros bid / no-bid call. Full ranked finder: <a href="index.html">the dashboard</a>.</div>
+<div id="list"><div class="state">Loading open tenders&hellip;</div></div>
+</div>
+<script>
+var SUPABASE_URL="https://xeadalusejspxhqesisv.supabase.co";
+var ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlYWRhbHVzZWpzcHhocWVzaXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDA3MDQsImV4cCI6MjA5NjQxNjcwNH0.i_-TytaPBtOTCoI0-1OlSBSX5kbiUrOQGCWgUTodrfU";
+var H={apikey:ANON,Authorization:"Bearer "+ANON};
+function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
+function fmtDate(d){ if(!d) return ""; return new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); }
+function money(t){ var v=(t.value_max!=null)?t.value_max:t.value_min; return v!=null?("&pound;"+Number(v).toLocaleString("en-GB")):"value not stated"; }
+function isOpen(t){ if(t.stage!=="tender") return false; if(t.jurisdiction && t.jurisdiction!=="uk") return false; if(!t.deadline_date) return true; return new Date(t.deadline_date)>=new Date(); }
+function card(t){
+  return '<div class="card"><h3>'+(t.source_url?('<a href="'+esc(t.source_url)+'" target="_blank" rel="noopener">'+esc(t.title)+'</a>'):esc(t.title))+'</h3>'
+   +'<div class="line"><b>'+esc(t.buyer_name||"Unknown buyer")+'</b> &middot; '+money(t)+(t.deadline_date?(' &middot; closes '+fmtDate(t.deadline_date)):'')+'</div>'
+   +'<div class="line">'+esc(t.cls_category||"-")+(t.cls_value_band?(' &middot; '+esc(t.cls_value_band)):'')+'</div>'
+   +'<button class="btn" data-id="'+esc(t.id)+'">Should we bid?</button>'
+   +'<div class="box" id="b-'+esc(t.id)+'" style="display:none"></div></div>';
+}
+function triage(btn,id){
+  var box=document.getElementById("b-"+id);
+  box.style.display="block";
+  box.innerHTML='<span class="hint">Checking whether to bid&hellip;</span>';
+  btn.disabled=true;
+  fetch(SUPABASE_URL+"/functions/v1/bid-triage",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ANON},body:JSON.stringify({tender_id:id})})
+   .then(function(r){return r.json();})
+   .then(function(d){
+     if(!d||!d.ok||!d.triage){ box.innerHTML='<span class="hint">Triage unavailable ('+esc((d&&(d.message||d.error))||"error")+').</span>'; btn.disabled=false; return; }
+     var t=d.triage, v=(t.verdict||"").toUpperCase();
+     var cls=v.indexOf("NO")===0?"nobid":(v.indexOf("MAYBE")===0?"maybe":"bid");
+     box.innerHTML='<div class="v '+cls+'">'+esc(v||"?")+'</div>'
+      +(t.fit?('<div class="row"><b>Fit:</b> '+esc(t.fit)+'</div>'):'')
+      +(t.reason?('<div class="row"><b>Why:</b> '+esc(t.reason)+'</div>'):'')
+      +(t.self_deliver?('<div class="row"><b>We deliver:</b> '+esc(t.self_deliver)+'</div>'):'')
+      +(t.subcontract?('<div class="row"><b>Subcontract:</b> '+esc(t.subcontract)+'</div>'):'')
+      +(t.red_flags?('<div class="row"><b>Red flags:</b> '+esc(t.red_flags)+'</div>'):'');
+     btn.textContent="Re-check"; btn.disabled=false;
+   })
+   .catch(function(e){ box.innerHTML='<span class="hint">Could not reach triage.</span>'; btn.disabled=false; });
+}
+fetch(SUPABASE_URL+"/rest/v1/tenders?select=id,title,buyer_name,cls_category,cls_value_band,value_min,value_max,deadline_date,source_url,jurisdiction,stage&order=deadline_date.asc.nullslast&limit=500",{headers:H})
+ .then(function(r){return r.json();})
+ .then(function(rows){
+   var open_rows=(rows||[]).filter(isOpen);
+   var list=document.getElementById("list");
+   if(!open_rows.length){ list.innerHTML='<div class="state">No open UK tenders right now. New ones arrive each morning.</div>'; return; }
+   list.innerHTML='<div class="sub">'+open_rows.length+' open UK tenders</div>'+open_rows.map(card).join("");
+   var btns=document.querySelectorAll(".btn[data-id]");
+   for(var i=0;i<btns.length;i++){ (function(b){ b.addEventListener("click",function(){ triage(b,b.getAttribute("data-id")); }); })(btns[i]); }
+ })
+ .catch(function(e){ document.getElementById("list").innerHTML='<div class="state">Could not load tenders ('+esc(e&&e.message?e.message:"error")+').</div>'; });
+</script>
+</body></html>
