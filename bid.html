@@ -163,7 +163,9 @@ function setMode(m){ MODE=m; renderList(); }
 
 function load(retried){
   if(LASTVISIT===null){try{LASTVISIT=parseInt(localStorage.getItem("sb_lastvisit")||"0",10)||0;}catch(e){LASTVISIT=0;}}
-  fetch(SUPABASE_URL+"/rest/v1/tenders?select=id,title,buyer_name,cls_category,cls_value_band,cls_sme_suitable,published_date,value_min,value_max,deadline_date,source_url,jurisdiction,stage&order=deadline_date.asc.nullslast&limit=800",{headers:authHeaders()})
+  var cutoff=new Date(Date.now()-86400000).toISOString();
+  var q=SUPABASE_URL+"/rest/v1/tenders?select=id,title,buyer_name,cls_category,cls_value_band,cls_sme_suitable,published_date,value_min,value_max,deadline_date,source_url,jurisdiction,stage&source=eq.contracts_finder&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(cutoff)+",deadline_date.is.null)&order=deadline_date.asc&limit=1000";
+  fetch(q,{headers:authHeaders()})
    .then(function(r){
      if(r.status===401 && !retried){return refresh().then(function(ok){if(ok){load(true);}else{signout();}return null;});}
      return r.json();
