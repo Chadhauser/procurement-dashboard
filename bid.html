@@ -17,6 +17,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 .tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:5px;padding:2px 7px;margin-right:6px;vertical-align:middle}
 .tag.local{background:rgba(111,208,192,.16);color:var(--eb)}
 .tag.cat{background:#1c242c;color:var(--dim);font-weight:600}
+.tag.new{background:rgba(131,192,255,.18);color:var(--link)}
 .line{font-size:13px;color:var(--dim);margin-bottom:4px}.line b{color:var(--ink)}
 .btn{background:transparent;border:1px solid var(--line);color:var(--link);border-radius:8px;padding:7px 13px;font:inherit;font-size:13px;cursor:pointer;margin-top:8px}
 .btn:hover{border-color:var(--link)}.btn:disabled{opacity:.6;cursor:default}
@@ -66,7 +67,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 <script>
 var SUPABASE_URL="https://xeadalusejspxhqesisv.supabase.co";
 var ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlYWRhbHVzZWpzcHhocWVzaXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDA3MDQsImV4cCI6MjA5NjQxNjcwNH0.i_-TytaPBtOTCoI0-1OlSBSX5kbiUrOQGCWgUTodrfU";
-var ACCESS=null, ALLROWS=[], MODE="primeable";
+var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null;
 var PRIMEABLE_CATS=["consulting","professional_services","accounting","data_services","software"];
 var LOCAL_RE=/northamptonshire|cambridgeshire|peterborough|huntingdon|rutland|bedford|kettering|corby|wellingborough|northampton|cambridge/i;
 
@@ -108,10 +109,11 @@ function money(t){ var v=(t.value_max!=null)?t.value_max:t.value_min; return v!=
 function isOpen(t){ if(t.stage!=="tender") return false; if(t.jurisdiction && t.jurisdiction!=="uk") return false; if(!t.deadline_date) return true; return new Date(t.deadline_date)>=new Date(); }
 function isPrimeable(t){ return isOpen(t) && t.cls_sme_suitable===true && PRIMEABLE_CATS.indexOf(t.cls_category)>=0; }
 function isLocal(t){ return isPrimeable(t) && LOCAL_RE.test(t.buyer_name||""); }
+function isNew(t){ return LASTVISIT && t.published_date && (new Date(t.published_date).getTime() > LASTVISIT); }
 
 function card(t){
   var local=isLocal(t);
-  var tags=(local?'<span class="tag local">Local</span>':'')+(t.cls_category?('<span class="tag cat">'+esc(t.cls_category)+'</span>'):'');
+  var tags=(isNew(t)?'<span class="tag new">New</span>':'')+(local?'<span class="tag local">Local</span>':'')+(t.cls_category?('<span class="tag cat">'+esc(t.cls_category)+'</span>'):'');
   return '<div class="card'+(local?' local':'')+'"><h3>'+(t.source_url?('<a href="'+esc(t.source_url)+'" target="_blank" rel="noopener">'+esc(t.title)+'</a>'):esc(t.title))+'</h3>'
    +'<div class="line">'+tags+'</div>'
    +'<div class="line"><b>'+esc(t.buyer_name||"Unknown buyer")+'</b> &middot; '+money(t)+(t.deadline_date?(' &middot; closes '+fmtDate(t.deadline_date)):'')+'</div>'
@@ -153,19 +155,20 @@ function renderList(){
   var rows=currentList(), list=document.getElementById("list");
   var label = MODE==="local"?"local primeable":(MODE==="all"?"open":"primeable");
   if(!rows.length){ list.innerHTML='<div class="state">No '+label+' tenders right now. New ones arrive each morning &mdash; check back, or try another tab.</div>'; return; }
-  list.innerHTML='<div class="sub">'+rows.length+' '+label+' tender'+(rows.length===1?"":"s")+'</div>'+rows.map(card).join("");
+  var nc=rows.filter(isNew).length;var nb=nc?(' &middot; '+nc+' new'):'';list.innerHTML='<div class="sub">'+rows.length+' '+label+' tender'+(rows.length===1?"":"s")+nb+'</div>'+rows.map(card).join("");
   var tb=document.querySelectorAll(".btn[data-id]");
   for(var i=0;i<tb.length;i++){(function(b){b.addEventListener("click",function(){triage(b,b.getAttribute("data-id"));});})(tb[i]);}
 }
 function setMode(m){ MODE=m; renderList(); }
 
 function load(retried){
-  fetch(SUPABASE_URL+"/rest/v1/tenders?select=id,title,buyer_name,cls_category,cls_value_band,cls_sme_suitable,value_min,value_max,deadline_date,source_url,jurisdiction,stage&order=deadline_date.asc.nullslast&limit=800",{headers:authHeaders()})
+  if(LASTVISIT===null){try{LASTVISIT=parseInt(localStorage.getItem("sb_lastvisit")||"0",10)||0;}catch(e){LASTVISIT=0;}}
+  fetch(SUPABASE_URL+"/rest/v1/tenders?select=id,title,buyer_name,cls_category,cls_value_band,cls_sme_suitable,published_date,value_min,value_max,deadline_date,source_url,jurisdiction,stage&order=deadline_date.asc.nullslast&limit=800",{headers:authHeaders()})
    .then(function(r){
      if(r.status===401 && !retried){return refresh().then(function(ok){if(ok){load(true);}else{signout();}return null;});}
      return r.json();
    })
-   .then(function(rows){ if(rows){ ALLROWS=rows; renderList(); } })
+   .then(function(rows){ if(rows){ ALLROWS=rows; renderList(); try{localStorage.setItem("sb_lastvisit",String(Date.now()));}catch(e){} } })
    .catch(function(e){ document.getElementById("list").innerHTML='<div class="state">Could not load tenders ('+esc(e&&e.message?e.message:"error")+').</div>'; });
 }
 
