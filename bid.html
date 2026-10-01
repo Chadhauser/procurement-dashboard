@@ -51,6 +51,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
     <button data-m="primeable" class="on">Primeable</button>
     <button data-m="local">Local</button>
     <button data-m="all">All open</button>
+    <button data-m="expiring">Re-tenders</button>
   </div>
   <div id="list"><div class="state">Loading tenders&hellip;</div></div>
 </div>
@@ -71,7 +72,7 @@ var CFG={
   wales:/wales|welsh|cymru|cardiff|swansea|newport city|wrexham|gwynedd|conwy|powys|ceredigion|carmarthenshire|pembrokeshire|rhondda|caerphilly|bridgend|flintshire|denbighshire|torfaen|monmouthshire|neath|merthyr/i
 };
 
-var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null;
+var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null, RETENDERS=null;
 function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
 function show(id){document.getElementById(id).classList.remove("hidden");}
 function hide(id){document.getElementById(id).classList.add("hidden");}
@@ -118,6 +119,24 @@ function screen(t){
 }
 function isLocal(t){ return screen(t).pass && CFG.local.test((t.buyer_name||"")+" "+(t.region||"")); }
 function isNew(t){ return LASTVISIT && t.published_date && (new Date(t.published_date).getTime()>LASTVISIT); }
+function monthsUntil(d){ if(!d) return null; var ms=new Date(d).getTime()-Date.now(); return Math.max(0,Math.round(ms/2629800000)); }
+function retCard(c){ var local=!!c.local; var v=(c.value!=null)?("£"+Number(c.value).toLocaleString("en-GB")):"value not stated"; var m=monthsUntil(c.ends);
+  return '<div class="card'+(local?' local':'')+'"><h3>'+(c.url?('<a href="'+esc(c.url)+'" target="_blank" rel="noopener">'+esc(c.title)+'</a>'):esc(c.title))+'</h3>'
+   +'<div class="line">'+(local?'<span class="tag local">Local</span>':'')+(c.category?('<span class="tag cat">'+esc(c.category)+'</span>'):'')+'</div>'
+   +'<div class="line"><b>'+esc(c.buyer||"Unknown buyer")+'</b> &middot; '+v+' &middot; ends '+fmtDate(c.ends)+(m!=null?(" (in ~"+m+" month"+(m===1?"":"s")+")"):"")+'</div>'
+   +(c.incumbent?('<div class="line">Incumbent: <b>'+esc(c.incumbent)+'</b></div>'):'')+'</div>'; }
+function renderExpiring(){
+  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
+  var list=document.getElementById("list");
+  if(RETENDERS===null){ list.innerHTML='<div class="state">Loading re-tender calendar&hellip;</div>';
+    fetch(SUPABASE_URL+"/functions/v1/retender",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({from:6,to:18,limit:150})})
+     .then(function(r){return r.json();})
+     .then(function(d){ RETENDERS=(d&&d.contracts)?d.contracts:[]; if(MODE==="expiring") renderExpiring(); })
+     .catch(function(){ list.innerHTML='<div class="state">Could not load the re-tender calendar.</div>'; });
+    return; }
+  if(!RETENDERS.length){ list.innerHTML='<div class="state">No expiring contracts in your categories for the next 6&ndash;18 months.</div>'; return; }
+  list.innerHTML='<div class="sub">'+RETENDERS.length+' contract'+(RETENDERS.length===1?"":"s")+' in your categories ending in 6&ndash;18 months &middot; incumbent shown &middot; local first. <span class="hint">Get on the framework / approach early before re-tender.</span></div>'+RETENDERS.map(retCard).join("");
+}
 
 function verdictClass(v){ v=(v||"").toUpperCase(); if(v.indexOf("NO-BID")===0||v.indexOf("NO BID")===0)return "nobid"; if(v.indexOf("APPROACH")===0)return "sub"; if(v.indexOf("WATCH")===0)return "watch"; if(v.indexOf("BID")===0)return v.indexOf("PRIME")>=0?"prime":"bid"; return "watch"; }
 
@@ -165,6 +184,7 @@ function currentList(){
   return rows;
 }
 function renderList(){
+  if(MODE==="expiring"){ return renderExpiring(); }
   var btns=document.querySelectorAll("#tabs button");
   for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
   var rows=currentList(), list=document.getElementById("list");
