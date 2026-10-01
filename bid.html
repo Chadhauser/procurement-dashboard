@@ -34,6 +34,10 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;font-size:12px;color:var(--dim)}
 .topbar .out{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:7px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
 .hidden{display:none}
+.ta{width:100%;min-height:150px;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:inherit;font-size:13px;padding:12px}
+.ta:focus{outline:none;border-color:var(--link)}
+.fl{padding:6px 10px;margin:4px 0;border-left:3px solid var(--line);background:#121820;border-radius:6px;font-size:13px}.fl b{color:var(--ink)}
+.fl-red{border-color:var(--hard)}.fl-amber{border-color:var(--build)}.fl-green{border-color:var(--match)}.fl-na{border-color:var(--line);opacity:.6}
 </style></head><body>
 
 <div id="loginView" class="login hidden">
@@ -52,6 +56,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
     <button data-m="local">Local</button>
     <button data-m="all">All open</button>
     <button data-m="expiring">Re-tenders</button>
+    <button data-m="check">Check a tender</button>
   </div>
   <div id="list"><div class="state">Loading tenders&hellip;</div></div>
 </div>
@@ -138,6 +143,38 @@ function renderExpiring(){
   list.innerHTML='<div class="sub">'+RETENDERS.length+' contract'+(RETENDERS.length===1?"":"s")+' in your categories ending in 6&ndash;18 months &middot; incumbent shown &middot; local first. <span class="hint">Get on the framework / approach early before re-tender.</span></div>'+RETENDERS.map(retCard).join("");
 }
 
+function ragClass(r){ r=(r||"").toLowerCase(); return r==="red"?"fl-red":(r==="amber"?"fl-amber":(r==="green"?"fl-green":"fl-na")); }
+function renderCheck(){
+  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
+  var list=document.getElementById("list");
+  list.innerHTML='<div class="sub">Paste a tender (notice or ITT/spec text) &mdash; Bloom invites, portal PDFs, anything not in the feed. It screens it, RAG-rates the flags and gives a verdict.</div>'
+   +'<textarea class="ta" id="chkText" placeholder="Paste the tender text here..."></textarea>'
+   +'<button class="btn" id="chkGo" style="margin-top:10px">Assess tender</button>'
+   +'<div id="chkOut" style="margin-top:12px"></div>';
+  document.getElementById("chkGo").addEventListener("click", assessTender);
+}
+function assessTender(){
+  var txt=document.getElementById("chkText").value.trim(), out=document.getElementById("chkOut"), go=document.getElementById("chkGo");
+  if(txt.length<20){ out.innerHTML='<span class="hint">Paste a bit more of the tender text.</span>'; return; }
+  go.disabled=true; out.innerHTML='<span class="hint">Assessing against the Edwards Bros profile&hellip;</span>';
+  fetch(SUPABASE_URL+"/functions/v1/assess",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({text:txt})})
+   .then(function(r){return r.json();})
+   .then(function(d){ go.disabled=false;
+     if(!d||!d.ok||!d.assessment){ out.innerHTML='<span class="hint">Could not assess ('+esc((d&&d.error)||"error")+').</span>'; return; }
+     var a=d.assessment, v=(a.verdict||"").toUpperCase(), ex=a.extracted||{};
+     var h='<div class="box"><div class="v '+verdictClass(v)+'">'+esc(v||"?")+'</div>';
+     if(ex.title) h+='<div class="row"><b>'+esc(ex.title)+'</b>'+(ex.buyer?(" — "+esc(ex.buyer)):"")+(ex.value?(" &middot; "+esc(ex.value)):"")+'</div>';
+     if(a.reason) h+='<div class="row"><b>Why:</b> '+esc(a.reason)+'</div>';
+     if(a.self_deliver) h+='<div class="row"><b>We deliver:</b> '+esc(a.self_deliver)+'</div>';
+     if(a.subcontract) h+='<div class="row"><b>Subcontract:</b> '+esc(a.subcontract)+'</div>';
+     h+='</div>';
+     var flags=a.flags||[], lastG="";
+     for(var i=0;i<flags.length;i++){ var f=flags[i]; if((f.group||"")!==lastG){ h+='<div class="line" style="margin-top:10px"><b>'+esc(f.group||"")+'</b></div>'; lastG=f.group||""; } h+='<div class="fl '+ragClass(f.rag)+'"><b>'+esc(f.flag||"")+'</b> &mdash; '+esc(f.note||"")+'</div>'; }
+     out.innerHTML=h;
+   })
+   .catch(function(){ go.disabled=false; out.innerHTML='<span class="hint">Could not reach the assessor.</span>'; });
+}
+
 function verdictClass(v){ v=(v||"").toUpperCase(); if(v.indexOf("NO-BID")===0||v.indexOf("NO BID")===0)return "nobid"; if(v.indexOf("APPROACH")===0)return "sub"; if(v.indexOf("WATCH")===0)return "watch"; if(v.indexOf("BID")===0)return v.indexOf("PRIME")>=0?"prime":"bid"; return "watch"; }
 
 function card(t){
@@ -185,6 +222,7 @@ function currentList(){
 }
 function renderList(){
   if(MODE==="expiring"){ return renderExpiring(); }
+  if(MODE==="check"){ return renderCheck(); }
   var btns=document.querySelectorAll("#tabs button");
   for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
   var rows=currentList(), list=document.getElementById("list");
