@@ -74,7 +74,8 @@ var CFG={
   categories:["consulting","professional_services","accounting","data_services","software"],
   minWorkingDays:10,
   frameworksWeAreOn:["bloom"],
-  subCategories:[ {re:/tree works|arboricultur|grounds maintenance|landscap|grass cutting|hedge|verge|green space/i, name:"grounds maintenance", sub:"none yet"} ]
+  subCategories:[ {re:/tree works|arboricultur|grounds maintenance|landscap|grass cutting|hedge|verge|green space/i, name:"grounds maintenance", sub:"none yet"} ],
+  profile:{ piHeld:1000000, heldAccreditations:["cyber essentials"] }
 };
 
 var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null, RETENDERS=null, RET_ALL=false;
@@ -265,6 +266,7 @@ function bucketRows(bucket){
     var da=a.deadline_date?new Date(a.deadline_date).getTime():8e15, db=b.deadline_date?new Date(b.deadline_date).getTime():8e15; return da-db; });
   return rows;
 }
+function parseLimit(x){ var t=String(x||"").toLowerCase().replace(/[£$, ]/g,""); if(!t) return 0; var m=t.match(/^([0-9.]+) *(m|k)?/); if(!m) return 0; var num=parseFloat(m[1])||0; if(m[2]==="m") num*=1e6; else if(m[2]==="k") num*=1e3; return num; }
 function renderGaps(){
   var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
   var scope=(ALLROWS||[]).filter(function(t){ return (CFG.categories.indexOf(t.cls_category)>=0 || t.category==="grounds_maintenance") && t.nation==="England" && t.buyer_type!=="private"; });
@@ -274,8 +276,30 @@ function renderGaps(){
   var html='<div class="sub">What stops in-scope tenders (a category we sell or grounds, English public buyer). Sample: '+n+' tender'+(n===1?"":"s")+(n<10?' — small sample, read with caution':'')+'.</div>';
   html+=arr.map(function(r){ return '<div class="fl '+(r.v>0?"fl-amber":"fl-na")+'"><b>'+r.k+'</b> &mdash; '+r.v+' ('+(n?Math.round(100*r.v/n):0)+'%)</div>'; }).join("");
   html+='<div class="line" style="margin-top:10px">Of the OVER CAP ones: <b>'+under150+'</b> under £150k, <b>'+under250+'</b> under £250k &mdash; what raising the cap would open up.</div>';
-  html+='<div class="line" style="margin-top:14px"><b>Requirement gaps</b> (insurance, accreditations, references, turnover) will appear here once tenders have been assessed. This needs structured requirements stored from Check-a-tender &mdash; pending go-ahead.</div>';
+  html+='<div class="line" style="margin-top:16px"><b>Requirement gaps</b> &mdash; from tenders assessed via Check a tender, requirements we do not meet:</div><div id="gapReq"><span class="hint">Loading assessed requirements&hellip;</span></div>';
   document.getElementById("list").innerHTML=html;
+  fetch(SUPABASE_URL+"/rest/v1/assessments?select=title,requirements&requirements=not.is.null&order=created_at.desc&limit=500",{headers:authHeaders()})
+   .then(function(r){return r.json();})
+   .then(function(rows){ var out=document.getElementById("gapReq"); if(!out) return;
+     if(!rows||!rows.length){ out.innerHTML='<span class="hint">No tenders assessed yet. Use Check a tender; requirement gaps will build up here.</span>'; return; }
+     var m=rows.length, tally={};
+     function bump(label,ttl){ if(!tally[label]) tally[label]={c:0,t:[]}; tally[label].c++; if(tally[label].t.length<6) tally[label].t.push(ttl); }
+     rows.forEach(function(a){ var rq=a.requirements||{}, ttl=a.title||"(untitled)";
+       if(rq.public_liability&&rq.public_liability.required) bump("Public liability (we hold none)",ttl);
+       if(rq.employers_liability&&rq.employers_liability.required) bump("Employers liability (we hold none)",ttl);
+       if(rq.professional_indemnity&&rq.professional_indemnity.required&&parseLimit(rq.professional_indemnity.limit)>CFG.profile.piHeld) bump("PI above our £1m",ttl);
+       (rq.accreditations||[]).forEach(function(ac){ if(CFG.profile.heldAccreditations.indexOf(String(ac).toLowerCase())<0) bump(String(ac),ttl); });
+       if(rq.references&&rq.references.required) bump("Comparable references (we have none public-sector)",ttl);
+       if(rq.min_turnover&&String(rq.min_turnover).trim()!=="") bump("Minimum turnover test",ttl);
+       if(rq.dbs===true) bump("Enhanced DBS",ttl);
+     });
+     var keys=Object.keys(tally).sort(function(x,y){return tally[y].c-tally[x].c;});
+     var h='<div class="sub" style="margin-top:4px">'+m+' tender'+(m===1?"":"s")+' assessed'+(m<10?' — small sample, read with caution':'')+'.</div>';
+     if(!keys.length){ h+='<span class="hint">No unmet requirements found in the assessed tenders yet.</span>'; }
+     h+=keys.map(function(k){ var pct=Math.round(100*tally[k].c/m); return '<div class="fl fl-red"><b>'+esc(k)+'</b> &mdash; '+tally[k].c+' of '+m+' ('+pct+'%)<div class="hint" style="margin-top:3px">'+esc(tally[k].t.join("; "))+'</div></div>'; }).join("");
+     out.innerHTML=h;
+   })
+   .catch(function(){ var out=document.getElementById("gapReq"); if(out) out.innerHTML='<span class="hint">Could not load assessed requirements.</span>'; });
 }
 function renderList(){
   if(MODE==="gaps"){ return renderGaps(); }
