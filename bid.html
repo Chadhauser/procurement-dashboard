@@ -16,7 +16,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 .tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:5px;padding:2px 7px;margin:0 6px 5px 0;vertical-align:middle}
 .tag.local{background:rgba(111,208,192,.16);color:var(--eb)}.tag.cat{background:#1c242c;color:var(--dim);font-weight:600}
 .tag.new{background:rgba(131,192,255,.18);color:var(--link)}.tag.drop{background:rgba(240,138,122,.15);color:var(--hard)}
-.tag.subt{background:rgba(157,180,255,.16);color:var(--sub)}
+.tag.subt{background:rgba(157,180,255,.16);color:var(--sub)}.tag.amber{background:rgba(244,197,96,.16);color:var(--build)}
 .line{font-size:13px;color:var(--dim);margin-bottom:4px}.line b{color:var(--ink)}
 .btn{background:transparent;border:1px solid var(--line);color:var(--link);border-radius:8px;padding:7px 13px;font:inherit;font-size:13px;cursor:pointer;margin-top:8px}
 .btn:hover{border-color:var(--link)}.btn:disabled{opacity:.6;cursor:default}
@@ -76,7 +76,7 @@ var CFG={
   subCategories:[ {re:/tree works|arboricultur|grounds maintenance|landscap|grass cutting|hedge|verge|green space/i, name:"grounds maintenance", sub:"none yet"} ]
 };
 
-var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null, RETENDERS=null;
+var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null, RETENDERS=null, RET_ALL=false;
 function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
 function show(id){document.getElementById(id).classList.remove("hidden");}
 function hide(id){document.getElementById(id).classList.add("hidden");}
@@ -109,14 +109,15 @@ function val(t){ return (t.value_max!=null)?t.value_max:(t.value_min!=null?t.val
 function money(t){ var v=val(t); return (t.value_known===false)?"value unknown":(v!=null?("£"+Number(v).toLocaleString("en-GB")):"value not stated"); }
 function workingDays(d){ if(!d) return null; var end=new Date(d), now=new Date(); if(end<=now) return 0; var cur=new Date(); cur.setHours(0,0,0,0); var c=0; while(cur<end){ var g=cur.getDay(); if(g!==0&&g!==6)c++; cur.setDate(cur.getDate()+1);} return c; }
 function frameworkCallOff(t){ var s=((t.title||"")).toLowerCase().trim(); if(/call-?off|mini[- ]competition|further competition/.test(s))return "a framework"; return null; }
-function matchSub(t){ var s=(t.title||"")+" "+(t.cls_category||""); for(var i=0;i<CFG.subCategories.length;i++){ if(CFG.subCategories[i].re.test(s)) return CFG.subCategories[i]; } return null; }
+function matchSub(t){ var s=(t.title||"")+" "+(t.cls_category||"")+" "+(t.description||""); for(var i=0;i<CFG.subCategories.length;i++){ if(CFG.subCategories[i].re.test(s)) return CFG.subCategories[i]; } return null; }
 
 // classify → {bucket:'primeable'|'needssub'|'dropped', tags:[], reasons:[], sub}
 function classify(t){
-  var tags=[], reasons=[];
+  var tags=[], reasons=[], amber=[];
   if(t.value_known===false){ reasons.push("value unknown"); tags.push("VALUE UNKNOWN"); }
   else { var v=val(t); if(v!=null && v>CFG.capGBP){ reasons.push("over £"+Math.round(CFG.capGBP/1000)+"k"); tags.push("OVER CAP"); } }
-  if(t.buyer_public===false){ reasons.push("not a public buyer"); tags.push("NOT A PUBLIC BUYER"); }
+  if(t.buyer_type==="private"){ reasons.push("not a public buyer"); tags.push("NOT A PUBLIC BUYER"); }
+  else if(t.buyer_type==="unsure"){ amber.push("CHECK BUYER"); }
   if(t.nation==="Overseas"){ reasons.push("overseas delivery"); tags.push("OVERSEAS DELIVERY"); }
   else if(t.nation && t.nation!=="England"){ reasons.push("outside England ("+t.nation+")"); tags.push("OUTSIDE ENGLAND ("+t.nation+")"); }
   var wd=workingDays(t.deadline_date); if(wd!=null && wd<CFG.minWorkingDays){ reasons.push("closes in "+wd+" working day"+(wd===1?"":"s")); tags.push("CLOSES SOON"); }
@@ -125,10 +126,10 @@ function classify(t){
   var gatesPass = reasons.length===0;
   var ours = t.cls_category && CFG.categories.indexOf(t.cls_category)>=0;
   var sub = matchSub(t);
-  if(gatesPass && ours) return {bucket:"primeable", tags:tags, reasons:reasons, sub:null};
-  if(gatesPass && sub) return {bucket:"needssub", tags:tags, reasons:reasons, sub:sub};
+  if(gatesPass && ours) return {bucket:"primeable", tags:tags, reasons:reasons, amber:amber, sub:null};
+  if(gatesPass && sub) return {bucket:"needssub", tags:tags, reasons:reasons, amber:amber, sub:sub};
   if(!ours && !sub){ reasons.push("category not one we sell ("+(t.cls_category||"?")+")"); tags.push("CATEGORY NOT SOLD"); }
-  return {bucket:"dropped", tags:tags, reasons:reasons, sub:sub};
+  return {bucket:"dropped", tags:tags, reasons:reasons, amber:amber, sub:sub};
 }
 function isLocal(t){ var c=classify(t); return (c.bucket==="primeable"||c.bucket==="needssub") && t.is_local===true; }
 function isNew(t){ return LASTVISIT && t.published_date && (new Date(t.published_date).getTime()>LASTVISIT); }
@@ -137,8 +138,9 @@ function verdictClass(v){ v=(v||"").toUpperCase(); if(v.indexOf("NO-BID")===0||v
 
 function card(t){
   var c=classify(t), local=t.is_local===true;
-  var tags=(isNew(t)?'<span class="tag new">New</span>':'')+(local?'<span class="tag local">Local</span>':'')+(t.cls_category?('<span class="tag cat">'+esc(t.cls_category)+'</span>'):'');
-  if(c.bucket==="needssub") tags+='<span class="tag subt">needs '+esc(c.sub.name)+'</span>';
+  var catLabel=(c.bucket==="needssub"&&c.sub)?c.sub.name:t.cls_category;
+  var tags=(isNew(t)?'<span class="tag new">New</span>':'')+(local?'<span class="tag local">Local</span>':'')+(catLabel?('<span class="tag cat">'+esc(catLabel)+'</span>'):'');
+  for(var a2=0;a2<(c.amber||[]).length;a2++){ tags+='<span class="tag amber">'+esc(c.amber[a2])+'</span>'; }
   for(var i=0;i<c.tags.length;i++){ tags+='<span class="tag drop">'+esc(c.tags[i])+'</span>'; }
   var subNote = (c.bucket==="needssub") ? ('<div class="line">Needs a subcontractor for <b>'+esc(c.sub.name)+'</b> — '+(c.sub.sub==="none yet"?'none lined up yet (verdict: Watch)':('sub: '+esc(c.sub.sub)+' (verdict: Bid as prime)'))+'</div>') : '';
   var cls = c.bucket==="dropped" ? " dropped" : (c.bucket==="needssub" ? " sub" : (local?" local":""));
@@ -179,13 +181,15 @@ function renderExpiring(){
   var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
   var list=document.getElementById("list");
   if(RETENDERS===null){ list.innerHTML='<div class="state">Loading re-tender calendar&hellip;</div>';
-    fetch(SUPABASE_URL+"/functions/v1/retender",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({from:6,to:18,limit:150})})
+    fetch(SUPABASE_URL+"/functions/v1/retender",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({from:6,to:18,limit:150,all:RET_ALL})})
      .then(function(r){return r.json();})
      .then(function(d){ RETENDERS=(d&&d.contracts)?d.contracts:[]; if(MODE==="expiring") renderExpiring(); })
      .catch(function(){ list.innerHTML='<div class="state">Could not load the re-tender calendar.</div>'; });
     return; }
   if(!RETENDERS.length){ list.innerHTML='<div class="state">No expiring contracts in your categories for the next 6&ndash;18 months.</div>'; return; }
-  list.innerHTML='<div class="sub">'+RETENDERS.length+' contract'+(RETENDERS.length===1?"":"s")+' in your categories ending in 6&ndash;18 months &middot; incumbent shown &middot; local first.</div>'+RETENDERS.map(retCard).join("");
+  var tgl='<button class="btn" id="retToggle" style="margin-bottom:8px">'+(RET_ALL?"Show default band (£10k–£150k)":"Show all values")+'</button>';
+  list.innerHTML='<div class="sub">'+RETENDERS.length+' contract'+(RETENDERS.length===1?"":"s")+' ending in 6&ndash;18 months &middot; '+(RET_ALL?"all values":"£10k–£150k")+' &middot; incumbent shown &middot; local first.</div>'+tgl+RETENDERS.map(retCard).join("");
+  var rt=document.getElementById("retToggle"); if(rt){ rt.addEventListener("click",function(){ RET_ALL=!RET_ALL; RETENDERS=null; renderExpiring(); }); }
 }
 
 function ragClass(r){ r=(r||"").toLowerCase(); return r==="red"?"fl-red":(r==="amber"?"fl-amber":(r==="green"?"fl-green":"fl-na")); }
@@ -284,13 +288,13 @@ function setMode(m){ MODE=m; renderList(); }
 
 function dedupe(rows){
   var seen={}, out=[];
-  for(var i=0;i<rows.length;i++){ var t=rows[i]; var k=t.notice_id||((t.buyer_name||"")+"|"+(t.title||"")+"|"+(t.deadline_date||"")); if(seen[k]) continue; seen[k]=1; out.push(t); }
+  for(var i=0;i<rows.length;i++){ var t=rows[i]; var k=((t.buyer_name||"")+"|"+(t.title||"")+"|"+(t.deadline_date||"")).toLowerCase(); if(seen[k]) continue; seen[k]=1; out.push(t); }
   return out;
 }
 function load(retried){
   if(LASTVISIT===null){try{LASTVISIT=parseInt(localStorage.getItem("sb_lastvisit")||"0",10)||0;}catch(x){LASTVISIT=0;}}
   var nowISO=new Date().toISOString();
-  var q=SUPABASE_URL+"/rest/v1/v_cf?select=id,notice_id,title,buyer_name,cls_category,value_min,value_max,deadline_date,published_date,source_url,nation,is_local,buyer_public,value_known,is_dps&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(nowISO)+",deadline_date.is.null)&order=deadline_date.asc&limit=1200";
+  var q=SUPABASE_URL+"/rest/v1/v_cf?select=id,notice_id,title,buyer_name,cls_category,value_min,value_max,deadline_date,published_date,source_url,nation,is_local,buyer_type,value_known,is_dps,description&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(nowISO)+",deadline_date.is.null)&order=deadline_date.asc&limit=1200";
   fetch(q,{headers:authHeaders()})
    .then(function(r){ if(r.status===401 && !retried){return refresh().then(function(ok){if(ok){load(true);}else{signout();}return null;});} return r.json(); })
    .then(function(rows){ if(rows){ ALLROWS=dedupe(rows.filter(function(t){ return !(t.deadline_date && new Date(t.deadline_date)<new Date()); })); renderList(); try{localStorage.setItem("sb_lastvisit",String(Date.now()));}catch(x){} } })
