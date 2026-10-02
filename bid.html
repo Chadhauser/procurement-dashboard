@@ -56,6 +56,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
     <button data-m="local">Local</button>
     <button data-m="needssub">Needs a sub</button>
     <button data-m="all">All open</button>
+    <button data-m="pipeline">Pipeline</button>
     <button data-m="expiring">Re-tenders</button>
     <button data-m="check">Check a tender</button>
   </div>
@@ -146,6 +147,7 @@ function card(t){
    +'<div class="line"><b>'+esc(t.buyer_name||"Unknown buyer")+'</b> &middot; '+money(t)+(t.deadline_date?(' &middot; closes '+fmtDate(t.deadline_date)):'')+'</div>'
    +subNote
    +'<button class="btn" data-id="'+esc(t.id)+'">Should we bid?</button>'
+   +' <button class="btn" data-track="'+esc(t.id)+'">+ Track</button>'
    +'<div class="box" id="b-'+esc(t.id)+'" style="display:none"></div></div>';
 }
 function triage(btn,id){
@@ -219,6 +221,39 @@ function assessTender(){
    .catch(function(){ go.disabled=false; out.innerHTML='<span class="hint">Could not reach the assessor.</span>'; });
 }
 
+function stageSelect(id,cur){ var ss=["watching","preparing","submitted","won","lost","no-bid","dropped"]; var h='<select data-pid="'+esc(id)+'" class="pstage" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'; for(var i=0;i<ss.length;i++){ h+='<option'+(ss[i]===cur?" selected":"")+'>'+ss[i]+'</option>'; } return h+'</select>'; }
+function pipelineAdd(btn,id){
+  var t=null; for(var i=0;i<ALLROWS.length;i++){ if(String(ALLROWS[i].id)===String(id)){ t=ALLROWS[i]; break; } }
+  if(!t){ return; }
+  btn.disabled=true; btn.textContent="Tracking…";
+  var body={ tender_id:String(t.id), title:t.title, buyer:t.buyer_name, value_text:money(t), source_url:t.source_url, deadline:(t.deadline_date?String(t.deadline_date).slice(0,10):null), stage:"watching" };
+  fetch(SUPABASE_URL+"/rest/v1/pipeline",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify(body)})
+   .then(function(r){ btn.textContent=r.ok?"Tracked ✓":"Track failed"; })
+   .catch(function(){ btn.disabled=false; btn.textContent="Track failed"; });
+}
+function pipelineSetStage(id,stage){
+  fetch(SUPABASE_URL+"/rest/v1/pipeline?id=eq."+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify({stage:stage,updated_at:new Date().toISOString()})});
+}
+function renderPipeline(){
+  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
+  var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading pipeline&hellip;</div>';
+  fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id,title,buyer,value_text,source_url,deadline,stage,notes,updated_at&order=updated_at.desc",{headers:authHeaders()})
+   .then(function(r){return r.json();})
+   .then(function(rows){
+     if(!rows||!rows.length){ list.innerHTML='<div class="sub">Pipeline</div><div class="state">Nothing tracked yet. On any tender, tap <b>+ Track</b> to add it here, then set its stage as it progresses.</div>'; return; }
+     var order=["watching","preparing","submitted","won","lost","no-bid","dropped"];
+     rows.sort(function(a,b){ return order.indexOf(a.stage)-order.indexOf(b.stage); });
+     var won=rows.filter(function(p){return p.stage==="won";}).length, sub=rows.filter(function(p){return p.stage==="submitted";}).length;
+     var html='<div class="sub">'+rows.length+' tracked &middot; '+sub+' submitted &middot; '+won+' won</div>';
+     html+=rows.map(function(p){ return '<div class="card"><h3>'+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title||"(untitled)")+'</a>'):esc(p.title||"(untitled)"))+'</h3>'
+       +'<div class="line"><b>'+esc(p.buyer||"")+'</b>'+(p.value_text?(' &middot; '+esc(p.value_text)):'')+(p.deadline?(' &middot; closes '+fmtDate(p.deadline)):'')+'</div>'
+       +'<div class="line">Stage: '+stageSelect(p.id,p.stage)+'</div></div>'; }).join("");
+     list.innerHTML=html;
+     var sel=document.querySelectorAll(".pstage");
+     for(var i=0;i<sel.length;i++){(function(x){x.addEventListener("change",function(){pipelineSetStage(x.getAttribute("data-pid"),x.value);});})(sel[i]);}
+   })
+   .catch(function(){ list.innerHTML='<div class="state">Could not load the pipeline.</div>'; });
+}
 function bucketRows(bucket){
   var rows=(ALLROWS||[]).filter(function(t){ return classify(t).bucket===bucket; });
   rows.sort(function(a,b){ var la=(a.is_local===true)?0:1, lb=(b.is_local===true)?0:1; if(la!==lb) return la-lb;
@@ -228,6 +263,7 @@ function bucketRows(bucket){
 function renderList(){
   if(MODE==="expiring"){ return renderExpiring(); }
   if(MODE==="check"){ return renderCheck(); }
+  if(MODE==="pipeline"){ return renderPipeline(); }
   var btns=document.querySelectorAll("#tabs button");
   for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
   var list=document.getElementById("list"), rows, label;
@@ -241,6 +277,8 @@ function renderList(){
   list.innerHTML='<div class="sub">'+rows.length+' '+label+' tender'+(rows.length===1?"":"s")+nb+note+'</div>'+rows.map(card).join("");
   var tb=document.querySelectorAll(".btn[data-id]");
   for(var i=0;i<tb.length;i++){(function(b){b.addEventListener("click",function(){triage(b,b.getAttribute("data-id"));});})(tb[i]);}
+  var tk=document.querySelectorAll(".btn[data-track]");
+  for(var m2=0;m2<tk.length;m2++){(function(b){b.addEventListener("click",function(){pipelineAdd(b,b.getAttribute("data-track"));});})(tk[m2]);}
 }
 function setMode(m){ MODE=m; renderList(); }
 
