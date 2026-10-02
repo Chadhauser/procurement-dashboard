@@ -57,6 +57,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
     <button data-m="needssub">Needs a sub</button>
     <button data-m="all">All open</button>
     <button data-m="pipeline">Pipeline</button>
+    <button data-m="gaps">Gaps</button>
     <button data-m="expiring">Re-tenders</button>
     <button data-m="check">Check a tender</button>
   </div>
@@ -125,7 +126,7 @@ function classify(t){
   var fw=frameworkCallOff(t); if(fw && CFG.frameworksWeAreOn.indexOf(fw.toLowerCase())<0){ reasons.push("framework call-off"); tags.push("FRAMEWORK CALL-OFF"); }
   var gatesPass = reasons.length===0;
   var ours = t.cls_category && CFG.categories.indexOf(t.cls_category)>=0;
-  var sub = matchSub(t);
+  var sub = (t.category==="grounds_maintenance") ? CFG.subCategories[0] : null;
   if(gatesPass && ours) return {bucket:"primeable", tags:tags, reasons:reasons, amber:amber, sub:null};
   if(gatesPass && sub) return {bucket:"needssub", tags:tags, reasons:reasons, amber:amber, sub:sub};
   if(!ours && !sub){ reasons.push("category not one we sell ("+(t.cls_category||"?")+")"); tags.push("CATEGORY NOT SOLD"); }
@@ -138,7 +139,7 @@ function verdictClass(v){ v=(v||"").toUpperCase(); if(v.indexOf("NO-BID")===0||v
 
 function card(t){
   var c=classify(t), local=t.is_local===true;
-  var catLabel=(c.bucket==="needssub"&&c.sub)?c.sub.name:t.cls_category;
+  var catLabel=(String(t.category||t.cls_category||"")).replace(/_/g," ");
   var tags=(isNew(t)?'<span class="tag new">New</span>':'')+(local?'<span class="tag local">Local</span>':'')+(catLabel?('<span class="tag cat">'+esc(catLabel)+'</span>'):'');
   for(var a2=0;a2<(c.amber||[]).length;a2++){ tags+='<span class="tag amber">'+esc(c.amber[a2])+'</span>'; }
   for(var i=0;i<c.tags.length;i++){ tags+='<span class="tag drop">'+esc(c.tags[i])+'</span>'; }
@@ -264,7 +265,20 @@ function bucketRows(bucket){
     var da=a.deadline_date?new Date(a.deadline_date).getTime():8e15, db=b.deadline_date?new Date(b.deadline_date).getTime():8e15; return da-db; });
   return rows;
 }
+function renderGaps(){
+  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
+  var scope=(ALLROWS||[]).filter(function(t){ return (CFG.categories.indexOf(t.cls_category)>=0 || t.category==="grounds_maintenance") && t.nation==="England" && t.buyer_type!=="private"; });
+  var n=scope.length, reasons={"OVER CAP":0,"CLOSES SOON":0,"VALUE UNKNOWN":0,"FRAMEWORK / DPS":0,"CHECK BUYER":0}, under150=0, under250=0;
+  scope.forEach(function(t){ var c=classify(t); c.tags.forEach(function(tg){ if(reasons.hasOwnProperty(tg)) reasons[tg]++; }); (c.amber||[]).forEach(function(tg){ if(reasons.hasOwnProperty(tg)) reasons[tg]++; }); var v=val(t); if(t.value_known!==false && v!=null && v>CFG.capGBP){ if(v<=150000) under150++; if(v<=250000) under250++; } });
+  var arr=Object.keys(reasons).map(function(k){return {k:k,v:reasons[k]};}).sort(function(a,b){return b.v-a.v;});
+  var html='<div class="sub">What stops in-scope tenders (a category we sell or grounds, English public buyer). Sample: '+n+' tender'+(n===1?"":"s")+(n<10?' — small sample, read with caution':'')+'.</div>';
+  html+=arr.map(function(r){ return '<div class="fl '+(r.v>0?"fl-amber":"fl-na")+'"><b>'+r.k+'</b> &mdash; '+r.v+' ('+(n?Math.round(100*r.v/n):0)+'%)</div>'; }).join("");
+  html+='<div class="line" style="margin-top:10px">Of the OVER CAP ones: <b>'+under150+'</b> under £150k, <b>'+under250+'</b> under £250k &mdash; what raising the cap would open up.</div>';
+  html+='<div class="line" style="margin-top:14px"><b>Requirement gaps</b> (insurance, accreditations, references, turnover) will appear here once tenders have been assessed. This needs structured requirements stored from Check-a-tender &mdash; pending go-ahead.</div>';
+  document.getElementById("list").innerHTML=html;
+}
 function renderList(){
+  if(MODE==="gaps"){ return renderGaps(); }
   if(MODE==="expiring"){ return renderExpiring(); }
   if(MODE==="check"){ return renderCheck(); }
   if(MODE==="pipeline"){ return renderPipeline(); }
@@ -286,15 +300,16 @@ function renderList(){
 }
 function setMode(m){ MODE=m; renderList(); }
 
+function norm(x){ return String(x||"").toLowerCase().replace(/ +/g," ").trim(); }
 function dedupe(rows){
   var seen={}, out=[];
-  for(var i=0;i<rows.length;i++){ var t=rows[i]; var k=((t.buyer_name||"")+"|"+(t.title||"")+"|"+(t.deadline_date||"")).toLowerCase(); if(seen[k]) continue; seen[k]=1; out.push(t); }
+  for(var i=0;i<rows.length;i++){ var t=rows[i]; var k=norm(t.buyer_name)+"|"+norm(t.title)+"|"+(t.deadline_date?String(t.deadline_date).slice(0,10):""); if(seen[k]) continue; seen[k]=1; out.push(t); }
   return out;
 }
 function load(retried){
   if(LASTVISIT===null){try{LASTVISIT=parseInt(localStorage.getItem("sb_lastvisit")||"0",10)||0;}catch(x){LASTVISIT=0;}}
   var nowISO=new Date().toISOString();
-  var q=SUPABASE_URL+"/rest/v1/v_cf?select=id,notice_id,title,buyer_name,cls_category,value_min,value_max,deadline_date,published_date,source_url,nation,is_local,buyer_type,value_known,is_dps,description&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(nowISO)+",deadline_date.is.null)&order=deadline_date.asc&limit=1200";
+  var q=SUPABASE_URL+"/rest/v1/v_cf?select=id,notice_id,title,buyer_name,cls_category,value_min,value_max,deadline_date,published_date,source_url,nation,is_local,buyer_type,value_known,is_dps,description,category&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(nowISO)+",deadline_date.is.null)&order=deadline_date.asc&limit=1200";
   fetch(q,{headers:authHeaders()})
    .then(function(r){ if(r.status===401 && !retried){return refresh().then(function(ok){if(ok){load(true);}else{signout();}return null;});} return r.json(); })
    .then(function(rows){ if(rows){ ALLROWS=dedupe(rows.filter(function(t){ return !(t.deadline_date && new Date(t.deadline_date)<new Date()); })); renderList(); try{localStorage.setItem("sb_lastvisit",String(Date.now()));}catch(x){} } })
