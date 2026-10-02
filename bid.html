@@ -11,12 +11,12 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 .tabs button{background:var(--panel);color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 15px;cursor:pointer;font:inherit;font-size:13px}
 .tabs button:hover{color:var(--ink)}.tabs button.on{background:var(--ink);color:#0e1216;border-color:var(--ink);font-weight:600}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:12px}
-.card.local{border-color:rgba(111,208,192,.5)}.card.dropped{opacity:.72}
-.card h3{font-size:16px;margin:0 0 4px;line-height:1.3}.card h3 a{color:var(--ink);text-decoration:none}.card h3 a:hover{color:var(--link)}
-.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:5px;padding:2px 7px;margin:0 6px 4px 0;vertical-align:middle}
+.card.local{border-color:rgba(111,208,192,.5)}.card.dropped{opacity:.72}.card.sub{border-color:rgba(157,180,255,.4)}
+.card h3{font-size:16px;margin:0 0 6px;line-height:1.3}.card h3 a{color:var(--ink);text-decoration:none}.card h3 a:hover{color:var(--link)}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:5px;padding:2px 7px;margin:0 6px 5px 0;vertical-align:middle}
 .tag.local{background:rgba(111,208,192,.16);color:var(--eb)}.tag.cat{background:#1c242c;color:var(--dim);font-weight:600}
-.tag.new{background:rgba(131,192,255,.18);color:var(--link)}
-.tag.drop{background:rgba(240,138,122,.15);color:var(--hard)}
+.tag.new{background:rgba(131,192,255,.18);color:var(--link)}.tag.drop{background:rgba(240,138,122,.15);color:var(--hard)}
+.tag.subt{background:rgba(157,180,255,.16);color:var(--sub)}
 .line{font-size:13px;color:var(--dim);margin-bottom:4px}.line b{color:var(--ink)}
 .btn{background:transparent;border:1px solid var(--line);color:var(--link);border-radius:8px;padding:7px 13px;font:inherit;font-size:13px;cursor:pointer;margin-top:8px}
 .btn:hover{border-color:var(--link)}.btn:disabled{opacity:.6;cursor:default}
@@ -54,6 +54,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
   <div class="tabs" id="tabs">
     <button data-m="primeable" class="on">Primeable</button>
     <button data-m="local">Local</button>
+    <button data-m="needssub">Needs a sub</button>
     <button data-m="all">All open</button>
     <button data-m="expiring">Re-tenders</button>
     <button data-m="check">Check a tender</button>
@@ -65,16 +66,13 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 var SUPABASE_URL="https://xeadalusejspxhqesisv.supabase.co";
 var ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlYWRhbHVzZWpzcHhocWVzaXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDA3MDQsImV4cCI6MjA5NjQxNjcwNH0.i_-TytaPBtOTCoI0-1OlSBSX5kbiUrOQGCWgUTodrfU";
 
-// ---- Editable settings (Tammy's company profile gates) ----
+// ---- Editable settings ----
 var CFG={
-  capGBP:90000, capBasis:"total",
+  capGBP:90000,
   categories:["consulting","professional_services","accounting","data_services","software"],
   minWorkingDays:10,
   frameworksWeAreOn:["bloom"],
-  local:/northamptonshire|cambridgeshire|bedfordshire|leicestershire|peterborough|huntingdon|rutland|kettering|corby|wellingborough|northampton|cambridge/i,
-  ni:/northern ireland|newry|mourne|belfast|lisburn|armagh|ballymena|antrim|causeway coast|ards |mid[- ]ulster|fermanagh|omagh|craigavon|derry/i,
-  scot:/scotland|scottish|glasgow|edinburgh|aberdeen|dundee|fife|renfrew|lanark|ayrshire|lothian|highland council|moray|dumfries|falkirk|perth and kinross|stirling council|inverclyde|midlothian/i,
-  wales:/wales|welsh|cymru|cardiff|swansea|newport city|wrexham|gwynedd|conwy|powys|ceredigion|carmarthenshire|pembrokeshire|rhondda|caerphilly|bridgend|flintshire|denbighshire|torfaen|monmouthshire|neath|merthyr/i
+  subCategories:[ {re:/tree works|arboricultur|grounds maintenance|landscap|grass cutting|hedge|verge|green space/i, name:"grounds maintenance", sub:"none yet"} ]
 };
 
 var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null, RETENDERS=null;
@@ -107,85 +105,46 @@ function startApp(email){hide("loginView");show("appView");document.getElementBy
 
 function fmtDate(d){ if(!d) return ""; return new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); }
 function val(t){ return (t.value_max!=null)?t.value_max:(t.value_min!=null?t.value_min:null); }
-function money(t){ var v=val(t); return v!=null?("&pound;"+Number(v).toLocaleString("en-GB")):"value not stated"; }
+function money(t){ var v=val(t); return (t.value_known===false)?"value unknown":(v!=null?("£"+Number(v).toLocaleString("en-GB")):"value not stated"); }
 function workingDays(d){ if(!d) return null; var end=new Date(d), now=new Date(); if(end<=now) return 0; var cur=new Date(); cur.setHours(0,0,0,0); var c=0; while(cur<end){ var g=cur.getDay(); if(g!==0&&g!==6)c++; cur.setDate(cur.getDate()+1);} return c; }
-function jurisdiction(t){ var s=((t.buyer_name||"")+" "+(t.region||"")).toLowerCase(); if(CFG.ni.test(s))return "Northern Ireland"; if(CFG.scot.test(s))return "Scotland"; if(CFG.wales.test(s))return "Wales"; return "England"; }
-function frameworkCallOff(t){ var s=((t.title||"")).toLowerCase().trim(); if(/^itt for project/.test(s))return "Innovate UK DPS"; if(/call-?off|mini[- ]competition|further competition/.test(s))return "a framework"; return null; }
+function frameworkCallOff(t){ var s=((t.title||"")).toLowerCase().trim(); if(/call-?off|mini[- ]competition|further competition/.test(s))return "a framework"; return null; }
+function matchSub(t){ var s=(t.title||"")+" "+(t.cls_category||""); for(var i=0;i<CFG.subCategories.length;i++){ if(CFG.subCategories[i].re.test(s)) return CFG.subCategories[i]; } return null; }
 
-// Stage-1 hard screen: returns {pass, reasons[]}
-function screen(t){
-  var reasons=[];
-  var v=val(t); if(v!=null && v>CFG.capGBP) reasons.push("over £"+Math.round(CFG.capGBP/1000)+"k ("+money(t).replace("&pound;","£")+")");
-  if(!(t.cls_category && CFG.categories.indexOf(t.cls_category)>=0)) reasons.push("category not one we sell ("+(t.cls_category||"?")+")");
-  var j=jurisdiction(t); if(j!=="England") reasons.push("outside England ("+j+")");
-  var wd=workingDays(t.deadline_date); if(wd!=null && wd<CFG.minWorkingDays) reasons.push("closes in "+wd+" working day"+(wd===1?"":"s"));
-  var fw=frameworkCallOff(t); if(fw && CFG.frameworksWeAreOn.indexOf(fw.toLowerCase())<0) reasons.push("framework-only ("+fw+") — not on it");
-  return {pass:reasons.length===0, reasons:reasons};
+// classify → {bucket:'primeable'|'needssub'|'dropped', tags:[], reasons:[], sub}
+function classify(t){
+  var tags=[], reasons=[];
+  if(t.value_known===false){ reasons.push("value unknown"); tags.push("VALUE UNKNOWN"); }
+  else { var v=val(t); if(v!=null && v>CFG.capGBP){ reasons.push("over £"+Math.round(CFG.capGBP/1000)+"k"); tags.push("OVER CAP"); } }
+  if(t.buyer_public===false){ reasons.push("not a public buyer"); tags.push("NOT A PUBLIC BUYER"); }
+  if(t.nation==="Overseas"){ reasons.push("overseas delivery"); tags.push("OVERSEAS DELIVERY"); }
+  else if(t.nation && t.nation!=="England"){ reasons.push("outside England ("+t.nation+")"); tags.push("OUTSIDE ENGLAND ("+t.nation+")"); }
+  var wd=workingDays(t.deadline_date); if(wd!=null && wd<CFG.minWorkingDays){ reasons.push("closes in "+wd+" working day"+(wd===1?"":"s")); tags.push("CLOSES SOON"); }
+  if(t.is_dps===true){ reasons.push("framework/DPS to join"); tags.push("FRAMEWORK / DPS"); }
+  var fw=frameworkCallOff(t); if(fw && CFG.frameworksWeAreOn.indexOf(fw.toLowerCase())<0){ reasons.push("framework call-off"); tags.push("FRAMEWORK CALL-OFF"); }
+  var gatesPass = reasons.length===0;
+  var ours = t.cls_category && CFG.categories.indexOf(t.cls_category)>=0;
+  var sub = matchSub(t);
+  if(gatesPass && ours) return {bucket:"primeable", tags:tags, reasons:reasons, sub:null};
+  if(gatesPass && sub) return {bucket:"needssub", tags:tags, reasons:reasons, sub:sub};
+  if(!ours && !sub){ reasons.push("category not one we sell ("+(t.cls_category||"?")+")"); tags.push("CATEGORY NOT SOLD"); }
+  return {bucket:"dropped", tags:tags, reasons:reasons, sub:sub};
 }
-function isLocal(t){ return screen(t).pass && CFG.local.test((t.buyer_name||"")+" "+(t.region||"")); }
+function isLocal(t){ var c=classify(t); return (c.bucket==="primeable"||c.bucket==="needssub") && t.is_local===true; }
 function isNew(t){ return LASTVISIT && t.published_date && (new Date(t.published_date).getTime()>LASTVISIT); }
-function monthsUntil(d){ if(!d) return null; var ms=new Date(d).getTime()-Date.now(); return Math.max(0,Math.round(ms/2629800000)); }
-function retCard(c){ var local=!!c.local; var v=(c.value!=null)?("£"+Number(c.value).toLocaleString("en-GB")):"value not stated"; var m=monthsUntil(c.ends);
-  return '<div class="card'+(local?' local':'')+'"><h3>'+(c.url?('<a href="'+esc(c.url)+'" target="_blank" rel="noopener">'+esc(c.title)+'</a>'):esc(c.title))+'</h3>'
-   +'<div class="line">'+(local?'<span class="tag local">Local</span>':'')+(c.category?('<span class="tag cat">'+esc(c.category)+'</span>'):'')+'</div>'
-   +'<div class="line"><b>'+esc(c.buyer||"Unknown buyer")+'</b> &middot; '+v+' &middot; ends '+fmtDate(c.ends)+(m!=null?(" (in ~"+m+" month"+(m===1?"":"s")+")"):"")+'</div>'
-   +(c.incumbent?('<div class="line">Incumbent: <b>'+esc(c.incumbent)+'</b></div>'):'')+'</div>'; }
-function renderExpiring(){
-  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
-  var list=document.getElementById("list");
-  if(RETENDERS===null){ list.innerHTML='<div class="state">Loading re-tender calendar&hellip;</div>';
-    fetch(SUPABASE_URL+"/functions/v1/retender",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({from:6,to:18,limit:150})})
-     .then(function(r){return r.json();})
-     .then(function(d){ RETENDERS=(d&&d.contracts)?d.contracts:[]; if(MODE==="expiring") renderExpiring(); })
-     .catch(function(){ list.innerHTML='<div class="state">Could not load the re-tender calendar.</div>'; });
-    return; }
-  if(!RETENDERS.length){ list.innerHTML='<div class="state">No expiring contracts in your categories for the next 6&ndash;18 months.</div>'; return; }
-  list.innerHTML='<div class="sub">'+RETENDERS.length+' contract'+(RETENDERS.length===1?"":"s")+' in your categories ending in 6&ndash;18 months &middot; incumbent shown &middot; local first. <span class="hint">Get on the framework / approach early before re-tender.</span></div>'+RETENDERS.map(retCard).join("");
-}
-
-function ragClass(r){ r=(r||"").toLowerCase(); return r==="red"?"fl-red":(r==="amber"?"fl-amber":(r==="green"?"fl-green":"fl-na")); }
-function renderCheck(){
-  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
-  var list=document.getElementById("list");
-  list.innerHTML='<div class="sub">Paste a tender (notice or ITT/spec text) &mdash; Bloom invites, portal PDFs, anything not in the feed. It screens it, RAG-rates the flags and gives a verdict.</div>'
-   +'<textarea class="ta" id="chkText" placeholder="Paste the tender text here..."></textarea>'
-   +'<button class="btn" id="chkGo" style="margin-top:10px">Assess tender</button>'
-   +'<div id="chkOut" style="margin-top:12px"></div>';
-  document.getElementById("chkGo").addEventListener("click", assessTender);
-}
-function assessTender(){
-  var txt=document.getElementById("chkText").value.trim(), out=document.getElementById("chkOut"), go=document.getElementById("chkGo");
-  if(txt.length<20){ out.innerHTML='<span class="hint">Paste a bit more of the tender text.</span>'; return; }
-  go.disabled=true; out.innerHTML='<span class="hint">Assessing against the Edwards Bros profile&hellip;</span>';
-  fetch(SUPABASE_URL+"/functions/v1/assess",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({text:txt})})
-   .then(function(r){return r.json();})
-   .then(function(d){ go.disabled=false;
-     if(!d||!d.ok||!d.assessment){ out.innerHTML='<span class="hint">Could not assess ('+esc((d&&d.error)||"error")+').</span>'; return; }
-     var a=d.assessment, v=(a.verdict||"").toUpperCase(), ex=a.extracted||{};
-     var h='<div class="box"><div class="v '+verdictClass(v)+'">'+esc(v||"?")+'</div>';
-     if(ex.title) h+='<div class="row"><b>'+esc(ex.title)+'</b>'+(ex.buyer?(" — "+esc(ex.buyer)):"")+(ex.value?(" &middot; "+esc(ex.value)):"")+'</div>';
-     if(a.reason) h+='<div class="row"><b>Why:</b> '+esc(a.reason)+'</div>';
-     if(a.self_deliver) h+='<div class="row"><b>We deliver:</b> '+esc(a.self_deliver)+'</div>';
-     if(a.subcontract) h+='<div class="row"><b>Subcontract:</b> '+esc(a.subcontract)+'</div>';
-     h+='</div>';
-     var flags=a.flags||[], lastG="";
-     for(var i=0;i<flags.length;i++){ var f=flags[i]; if((f.group||"")!==lastG){ h+='<div class="line" style="margin-top:10px"><b>'+esc(f.group||"")+'</b></div>'; lastG=f.group||""; } h+='<div class="fl '+ragClass(f.rag)+'"><b>'+esc(f.flag||"")+'</b> &mdash; '+esc(f.note||"")+'</div>'; }
-     out.innerHTML=h;
-   })
-   .catch(function(){ go.disabled=false; out.innerHTML='<span class="hint">Could not reach the assessor.</span>'; });
-}
 
 function verdictClass(v){ v=(v||"").toUpperCase(); if(v.indexOf("NO-BID")===0||v.indexOf("NO BID")===0)return "nobid"; if(v.indexOf("APPROACH")===0)return "sub"; if(v.indexOf("WATCH")===0)return "watch"; if(v.indexOf("BID")===0)return v.indexOf("PRIME")>=0?"prime":"bid"; return "watch"; }
 
 function card(t){
-  var sc=screen(t), local=isLocal(t);
+  var c=classify(t), local=t.is_local===true;
   var tags=(isNew(t)?'<span class="tag new">New</span>':'')+(local?'<span class="tag local">Local</span>':'')+(t.cls_category?('<span class="tag cat">'+esc(t.cls_category)+'</span>'):'');
-  if(!sc.pass) tags+='<span class="tag drop">'+esc(sc.reasons[0])+'</span>';
-  var dropNote = (!sc.pass && sc.reasons.length>1) ? ('<div class="line" style="color:var(--hard)">Also: '+esc(sc.reasons.slice(1).join("; "))+'</div>') : '';
-  return '<div class="card'+(local?' local':'')+(sc.pass?'':' dropped')+'"><h3>'+(t.source_url?('<a href="'+esc(t.source_url)+'" target="_blank" rel="noopener">'+esc(t.title)+'</a>'):esc(t.title))+'</h3>'
+  if(c.bucket==="needssub") tags+='<span class="tag subt">needs '+esc(c.sub.name)+'</span>';
+  for(var i=0;i<c.tags.length;i++){ tags+='<span class="tag drop">'+esc(c.tags[i])+'</span>'; }
+  var subNote = (c.bucket==="needssub") ? ('<div class="line">Needs a subcontractor for <b>'+esc(c.sub.name)+'</b> — '+(c.sub.sub==="none yet"?'none lined up yet (verdict: Watch)':('sub: '+esc(c.sub.sub)+' (verdict: Bid as prime)'))+'</div>') : '';
+  var cls = c.bucket==="dropped" ? " dropped" : (c.bucket==="needssub" ? " sub" : (local?" local":""));
+  return '<div class="card'+cls+'"><h3>'+(t.source_url?('<a href="'+esc(t.source_url)+'" target="_blank" rel="noopener">'+esc(t.title)+'</a>'):esc(t.title))+'</h3>'
    +'<div class="line">'+tags+'</div>'
    +'<div class="line"><b>'+esc(t.buyer_name||"Unknown buyer")+'</b> &middot; '+money(t)+(t.deadline_date?(' &middot; closes '+fmtDate(t.deadline_date)):'')+'</div>'
-   +dropNote
+   +subNote
    +'<button class="btn" data-id="'+esc(t.id)+'">Should we bid?</button>'
    +'<div class="box" id="b-'+esc(t.id)+'" style="display:none"></div></div>';
 }
@@ -208,16 +167,62 @@ function triage(btn,id){
    .catch(function(){box.innerHTML='<span class="hint">Could not reach triage.</span>';btn.disabled=false;});
 }
 
-function currentList(){
-  var rows=(ALLROWS||[]).slice();
-  if(MODE==="primeable") rows=rows.filter(function(t){return screen(t).pass;});
-  else if(MODE==="local") rows=rows.filter(isLocal);
-  // "all" keeps everything (passed + dropped)
-  rows.sort(function(a,b){
-    var pa=screen(a).pass?0:1, pb=screen(b).pass?0:1; if(pa!==pb) return pa-pb; // passed first in All
-    var la=isLocal(a)?0:1, lb=isLocal(b)?0:1; if(la!==lb) return la-lb;
-    var da=a.deadline_date?new Date(a.deadline_date).getTime():8e15, db=b.deadline_date?new Date(b.deadline_date).getTime():8e15; return da-db;
-  });
+function monthsUntil(d){ if(!d) return null; var ms=new Date(d).getTime()-Date.now(); return Math.max(0,Math.round(ms/2629800000)); }
+function retCard(c){ var local=!!c.local; var v=(c.value!=null)?("£"+Number(c.value).toLocaleString("en-GB")):"value not stated"; var m=monthsUntil(c.ends);
+  return '<div class="card'+(local?' local':'')+'"><h3>'+(c.url?('<a href="'+esc(c.url)+'" target="_blank" rel="noopener">'+esc(c.title)+'</a>'):esc(c.title))+'</h3>'
+   +'<div class="line">'+(local?'<span class="tag local">Local</span>':'')+(c.category?('<span class="tag cat">'+esc(c.category)+'</span>'):'')+'</div>'
+   +'<div class="line"><b>'+esc(c.buyer||"Unknown buyer")+'</b> &middot; '+v+' &middot; ends '+fmtDate(c.ends)+(m!=null?(" (in ~"+m+" month"+(m===1?"":"s")+")"):"")+'</div>'
+   +(c.incumbent?('<div class="line">Incumbent: <b>'+esc(c.incumbent)+'</b></div>'):'')+'</div>'; }
+function renderExpiring(){
+  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
+  var list=document.getElementById("list");
+  if(RETENDERS===null){ list.innerHTML='<div class="state">Loading re-tender calendar&hellip;</div>';
+    fetch(SUPABASE_URL+"/functions/v1/retender",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({from:6,to:18,limit:150})})
+     .then(function(r){return r.json();})
+     .then(function(d){ RETENDERS=(d&&d.contracts)?d.contracts:[]; if(MODE==="expiring") renderExpiring(); })
+     .catch(function(){ list.innerHTML='<div class="state">Could not load the re-tender calendar.</div>'; });
+    return; }
+  if(!RETENDERS.length){ list.innerHTML='<div class="state">No expiring contracts in your categories for the next 6&ndash;18 months.</div>'; return; }
+  list.innerHTML='<div class="sub">'+RETENDERS.length+' contract'+(RETENDERS.length===1?"":"s")+' in your categories ending in 6&ndash;18 months &middot; incumbent shown &middot; local first.</div>'+RETENDERS.map(retCard).join("");
+}
+
+function ragClass(r){ r=(r||"").toLowerCase(); return r==="red"?"fl-red":(r==="amber"?"fl-amber":(r==="green"?"fl-green":"fl-na")); }
+function renderCheck(){
+  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
+  var list=document.getElementById("list");
+  list.innerHTML='<div class="sub">Paste a tender (notice or ITT/spec text) &mdash; Bloom invites, portal PDFs, anything not in the feed. It screens it, RAG-rates the flags and gives a verdict.</div>'
+   +'<textarea class="ta" id="chkText" placeholder="Paste the tender text here..."></textarea>'
+   +'<button class="btn" id="chkGo" style="margin-top:10px">Assess tender</button>'
+   +'<div id="chkOut" style="margin-top:12px"></div>';
+  document.getElementById("chkGo").addEventListener("click", assessTender);
+}
+function assessTender(){
+  var txt=document.getElementById("chkText").value.trim(), out=document.getElementById("chkOut"), go=document.getElementById("chkGo");
+  if(txt.length<20){ out.innerHTML='<span class="hint">Paste a bit more of the tender text.</span>'; return; }
+  go.disabled=true; out.innerHTML='<span class="hint">Assessing against the Edwards Bros profile&hellip;</span>';
+  fetch(SUPABASE_URL+"/functions/v1/assess",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({text:txt})})
+   .then(function(r){return r.json();})
+   .then(function(d){ go.disabled=false;
+     if(!d||!d.ok||!d.assessment){ out.innerHTML='<span class="hint">Could not assess ('+esc((d&&d.error)||"error")+').</span>'; return; }
+     var a=d.assessment, v=(a.verdict||"").toUpperCase(), ex=a.extracted||{};
+     var h='<div class="box"><div class="v '+verdictClass(v)+'">'+esc(v||"?")+'</div>';
+     if(a.notice_only) h+='<div class="row hint">Based on the notice only; full documents not read.</div>';
+     if(ex.title) h+='<div class="row"><b>'+esc(ex.title)+'</b>'+(ex.buyer?(" — "+esc(ex.buyer)):"")+(ex.value?(" &middot; "+esc(ex.value)):"")+'</div>';
+     if(a.reason) h+='<div class="row"><b>Why:</b> '+esc(a.reason)+'</div>';
+     if(a.self_deliver) h+='<div class="row"><b>We deliver:</b> '+esc(a.self_deliver)+'</div>';
+     if(a.subcontract) h+='<div class="row"><b>Subcontract:</b> '+esc(a.subcontract)+'</div>';
+     h+='</div>';
+     var flags=a.flags||[], lastG="";
+     for(var i=0;i<flags.length;i++){ var f=flags[i]; if((f.group||"")!==lastG){ h+='<div class="line" style="margin-top:10px"><b>'+esc(f.group||"")+'</b></div>'; lastG=f.group||""; } h+='<div class="fl '+ragClass(f.rag)+'"><b>'+esc(f.flag||"")+'</b> &mdash; '+esc(f.note||"")+'</div>'; }
+     out.innerHTML=h;
+   })
+   .catch(function(){ go.disabled=false; out.innerHTML='<span class="hint">Could not reach the assessor.</span>'; });
+}
+
+function bucketRows(bucket){
+  var rows=(ALLROWS||[]).filter(function(t){ return classify(t).bucket===bucket; });
+  rows.sort(function(a,b){ var la=(a.is_local===true)?0:1, lb=(b.is_local===true)?0:1; if(la!==lb) return la-lb;
+    var da=a.deadline_date?new Date(a.deadline_date).getTime():8e15, db=b.deadline_date?new Date(b.deadline_date).getTime():8e15; return da-db; });
   return rows;
 }
 function renderList(){
@@ -225,24 +230,32 @@ function renderList(){
   if(MODE==="check"){ return renderCheck(); }
   var btns=document.querySelectorAll("#tabs button");
   for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
-  var rows=currentList(), list=document.getElementById("list");
-  var label=MODE==="local"?"local primeable":(MODE==="all"?"open":"primeable");
+  var list=document.getElementById("list"), rows, label;
+  if(MODE==="primeable"){ rows=bucketRows("primeable"); label="primeable"; }
+  else if(MODE==="local"){ rows=bucketRows("primeable").concat(bucketRows("needssub")).filter(function(t){return t.is_local===true;}); label="local"; }
+  else if(MODE==="needssub"){ rows=bucketRows("needssub"); label="needs-a-sub"; }
+  else { rows=bucketRows("primeable").concat(bucketRows("needssub")).concat(bucketRows("dropped")); label="open"; }
   if(!rows.length){ list.innerHTML='<div class="state">No '+label+' tenders right now. New ones arrive each morning &mdash; check back, or try another tab.</div>'; return; }
   var nc=rows.filter(isNew).length, nb=nc?(" &middot; "+nc+" new"):"";
-  var note = MODE==="all" ? ' <span class="hint">(passed first, then dropped with the reason)</span>' : '';
+  var note = MODE==="all" ? ' <span class="hint">(primeable first, then needs-a-sub, then dropped with the reason)</span>' : '';
   list.innerHTML='<div class="sub">'+rows.length+' '+label+' tender'+(rows.length===1?"":"s")+nb+note+'</div>'+rows.map(card).join("");
   var tb=document.querySelectorAll(".btn[data-id]");
   for(var i=0;i<tb.length;i++){(function(b){b.addEventListener("click",function(){triage(b,b.getAttribute("data-id"));});})(tb[i]);}
 }
 function setMode(m){ MODE=m; renderList(); }
 
+function dedupe(rows){
+  var seen={}, out=[];
+  for(var i=0;i<rows.length;i++){ var t=rows[i]; var k=t.notice_id||((t.buyer_name||"")+"|"+(t.title||"")+"|"+(t.deadline_date||"")); if(seen[k]) continue; seen[k]=1; out.push(t); }
+  return out;
+}
 function load(retried){
   if(LASTVISIT===null){try{LASTVISIT=parseInt(localStorage.getItem("sb_lastvisit")||"0",10)||0;}catch(x){LASTVISIT=0;}}
-  var cutoff=new Date(Date.now()-86400000).toISOString();
-  var q=SUPABASE_URL+"/rest/v1/tenders?select=id,title,buyer_name,cls_category,cls_value_band,cls_sme_suitable,published_date,value_min,value_max,deadline_date,source_url,jurisdiction,stage,region&source=eq.contracts_finder&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(cutoff)+",deadline_date.is.null)&order=deadline_date.asc&limit=1000";
+  var nowISO=new Date().toISOString();
+  var q=SUPABASE_URL+"/rest/v1/v_cf?select=id,notice_id,title,buyer_name,cls_category,value_min,value_max,deadline_date,published_date,source_url,nation,is_local,buyer_public,value_known,is_dps&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(nowISO)+",deadline_date.is.null)&order=deadline_date.asc&limit=1200";
   fetch(q,{headers:authHeaders()})
    .then(function(r){ if(r.status===401 && !retried){return refresh().then(function(ok){if(ok){load(true);}else{signout();}return null;});} return r.json(); })
-   .then(function(rows){ if(rows){ ALLROWS=rows; renderList(); try{localStorage.setItem("sb_lastvisit",String(Date.now()));}catch(x){} } })
+   .then(function(rows){ if(rows){ ALLROWS=dedupe(rows.filter(function(t){ return !(t.deadline_date && new Date(t.deadline_date)<new Date()); })); renderList(); try{localStorage.setItem("sb_lastvisit",String(Date.now()));}catch(x){} } })
    .catch(function(e){ document.getElementById("list").innerHTML='<div class="state">Could not load tenders ('+esc(e&&e.message?e.message:"error")+').</div>'; });
 }
 
