@@ -75,7 +75,9 @@ var CFG={
   minWorkingDays:10,
   frameworksWeAreOn:["bloom"],
   subCategories:[ {re:/tree works|arboricultur|grounds maintenance|landscap|grass cutting|hedge|verge|green space/i, name:"grounds maintenance", sub:"none yet"} ],
-  profile:{ piHeld:1000000, heldAccreditations:["cyber essentials"] }
+  profile:{ piHeld:1000000, heldAccreditations:["cyber essentials"] },
+  soldConsulting:/project management|programme management|pmo|contract management|commercial management|procurement support|bid support|business case/i,
+  notSoldConsulting:/evaluation|research|survey|organisational development|training design|strategy|policy|feasibility|environmental assessment/i
 };
 
 var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null, RETENDERS=null, RET_ALL=false, WHATIF_CAP=null;
@@ -128,11 +130,18 @@ function classify(t){
   var fw=frameworkCallOff(t); if(fw && CFG.frameworksWeAreOn.indexOf(fw.toLowerCase())<0){ reasons.push("framework call-off"); tags.push("FRAMEWORK CALL-OFF"); }
   var gatesPass = reasons.length===0;
   var ours = t.cls_category && CFG.categories.indexOf(t.cls_category)>=0;
+  var scopeLabel=null;
+  if(t.cls_category==="consulting"){
+    var ctext=((t.title||"")+" "+(t.description||""));
+    if(CFG.soldConsulting.test(ctext)){ ours=true; scopeLabel="Project & contract management"; }
+    else if(CFG.notSoldConsulting.test(ctext)){ ours=false; scopeLabel="Other consulting"; }
+    else { ours=true; scopeLabel="Consulting — check scope"; amber.push("CHECK SCOPE"); }
+  }
   var sub = (t.category==="grounds_maintenance") ? CFG.subCategories[0] : null;
-  if(gatesPass && ours) return {bucket:"primeable", tags:tags, reasons:reasons, amber:amber, sub:null};
-  if(gatesPass && sub) return {bucket:"needssub", tags:tags, reasons:reasons, amber:amber, sub:sub};
-  if(!ours && !sub){ reasons.push("category not one we sell ("+(t.cls_category||"?")+")"); tags.push("CATEGORY NOT SOLD"); }
-  return {bucket:"dropped", tags:tags, reasons:reasons, amber:amber, sub:sub};
+  if(gatesPass && ours) return {bucket:"primeable", tags:tags, reasons:reasons, amber:amber, sub:null, scopeLabel:scopeLabel};
+  if(gatesPass && sub) return {bucket:"needssub", tags:tags, reasons:reasons, amber:amber, sub:sub, scopeLabel:scopeLabel};
+  if(!ours && !sub){ reasons.push(scopeLabel==="Other consulting"?"other consulting — not project/contract management":("category not one we sell ("+(t.cls_category||"?")+")")); tags.push("CATEGORY NOT SOLD"); }
+  return {bucket:"dropped", tags:tags, reasons:reasons, amber:amber, sub:sub, scopeLabel:scopeLabel};
 }
 function isLocal(t){ var c=classify(t); return (c.bucket==="primeable"||c.bucket==="needssub") && t.is_local===true; }
 function isNew(t){ return LASTVISIT && t.published_date && (new Date(t.published_date).getTime()>LASTVISIT); }
@@ -141,7 +150,7 @@ function verdictClass(v){ v=(v||"").toUpperCase(); if(v.indexOf("NO-BID")===0||v
 
 function card(t){
   var c=classify(t), local=t.is_local===true;
-  var catLabel=(String(t.category||t.cls_category||"")).replace(/_/g," ");
+  var catLabel=c.scopeLabel || (String(t.category||t.cls_category||"")).replace(/_/g," ");
   var tags=(isNew(t)?'<span class="tag new">New</span>':'')+(local?'<span class="tag local">Local</span>':'')+(catLabel?('<span class="tag cat">'+esc(catLabel)+'</span>'):'');
   for(var a2=0;a2<(c.amber||[]).length;a2++){ tags+='<span class="tag amber">'+esc(c.amber[a2])+'</span>'; }
   for(var i=0;i<c.tags.length;i++){ tags+='<span class="tag drop">'+esc(c.tags[i])+'</span>'; }
@@ -277,15 +286,23 @@ function runSelfTest(){
    {k:"A",exp:"BID - WE DELIVER",txt:"Project management support for a leisure centre refurbishment programme. Buyer Northampton Borough Council, England. Estimated value GBP 60,000 over 9 months. Closing in 20 working days."},
    {k:"C",exp:"WATCH",txt:"Grounds maintenance for parish open spaces including grass cutting and hedge trimming. Buyer an English parish council. Value GBP 40,000. Closing in 20 working days."},
    {k:"D",exp:"APPROACH AS SUB",txt:"Programme and contract management office for a highways capital programme. Buyer Leicestershire County Council, England. Value GBP 450,000. Closing in 20 working days."},
-   {k:"E",exp:"NO-BID",txt:"Supply and delivery of school minibuses. Buyer an English county council. Value GBP 70,000. Closing in 20 working days."}
+   {k:"E",exp:"NO-BID",txt:"Supply and delivery of school minibuses. Buyer an English county council. Value GBP 70,000. Closing in 20 working days."},
+   {k:"F",exp:"NO-BID",txt:"Independent programme evaluation of a public health initiative. Buyer an English county council. Value GBP 60,000. Closing in 20 working days."},
+   {k:"G",exp:"BID - WE DELIVER",txt:"Contract management support for a highways maintenance contract. Buyer an English county council. Value GBP 60,000. Closing in 20 working days."}
   ];
   var results=[];
+  // B: radar logic (grounds + named sub => Bid as prime), deterministic
   var bPass=(function(){ var old=CFG.subCategories[0].sub; CFG.subCategories[0].sub="Test Grounds Ltd"; var c=classify({category:"grounds_maintenance",cls_category:"construction",value_known:true,value_max:40000,buyer_type:"public",nation:"England",deadline_date:new Date(Date.now()+30*864e5).toISOString()}); var ok=(c.bucket==="needssub" && c.sub && c.sub.sub!=="none yet"); CFG.subCategories[0].sub=old; return ok; })();
+  var d30=new Date(Date.now()+30*864e5).toISOString();
+  var fScreen=(classify({cls_category:"consulting",title:"Independent programme evaluation",description:"",value_known:true,value_max:60000,buyer_type:"public",nation:"England",deadline_date:d30}).bucket!=="primeable");
+  var gScreen=(classify({cls_category:"consulting",title:"Contract management support",description:"",value_known:true,value_max:60000,buyer_type:"public",nation:"England",deadline_date:d30}).bucket==="primeable");
   var done=0;
   function finish(){ done++; if(done<fx.length) return;
     results.sort(function(a,b){return a.k<b.k?-1:1;});
     var html=results.map(function(r){ return '<div class="fl '+(r.pass?"fl-green":"fl-red")+'"><b>'+r.k+' '+(r.pass?"PASS":"FAIL")+'</b> &mdash; expected '+esc(r.exp)+', got '+esc(r.got)+'</div>'; }).join("");
     html='<div class="fl '+(bPass?"fl-green":"fl-red")+'"><b>B '+(bPass?"PASS":"FAIL")+'</b> &mdash; expected BID AS PRIME (radar, grounds + named sub), got '+(bPass?"BID AS PRIME":"not prime")+'</div>'+html;
+    html+='<div class="fl '+(fScreen?"fl-green":"fl-red")+'"><b>F screening '+(fScreen?"PASS":"FAIL")+'</b> &mdash; evaluation is not primeable</div>';
+    html+='<div class="fl '+(gScreen?"fl-green":"fl-red")+'"><b>G screening '+(gScreen?"PASS":"FAIL")+'</b> &mdash; contract management is primeable</div>';
     out.innerHTML=html;
   }
   fx.forEach(function(f){
