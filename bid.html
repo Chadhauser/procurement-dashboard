@@ -203,6 +203,7 @@ function renderCheck(){
   list.innerHTML='<div class="sub">Paste a tender (notice or ITT/spec text) &mdash; Bloom invites, portal PDFs, anything not in the feed. It screens it, RAG-rates the flags and gives a verdict.</div>'
    +'<textarea class="ta" id="chkText" placeholder="Paste the tender text here..."></textarea>'
    +'<button class="btn" id="chkGo" style="margin-top:10px">Assess tender</button>'
+   +'<label style="display:inline-block;margin-left:10px;font-size:12px;color:var(--dim)"><input type="checkbox" id="chkTest"> Test only, do not record</label>'
    +'<div id="chkOut" style="margin-top:12px"></div>';
   document.getElementById("chkGo").addEventListener("click", assessTender);
 }
@@ -210,7 +211,7 @@ function assessTender(){
   var txt=document.getElementById("chkText").value.trim(), out=document.getElementById("chkOut"), go=document.getElementById("chkGo");
   if(txt.length<20){ out.innerHTML='<span class="hint">Paste a bit more of the tender text.</span>'; return; }
   go.disabled=true; out.innerHTML='<span class="hint">Assessing against the Edwards Bros profile&hellip;</span>';
-  fetch(SUPABASE_URL+"/functions/v1/assess",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({text:txt})})
+  fetch(SUPABASE_URL+"/functions/v1/assess",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS},body:JSON.stringify({text:txt,is_test:(document.getElementById("chkTest")&&document.getElementById("chkTest").checked)||false})})
    .then(function(r){return r.json();})
    .then(function(d){ go.disabled=false;
      if(!d||!d.ok||!d.assessment){ out.innerHTML='<span class="hint">Could not assess ('+esc((d&&d.error)||"error")+').</span>'; return; }
@@ -307,7 +308,8 @@ function renderGaps(){
   var arr=Object.keys(reasons).map(function(k){return {k:k,v:reasons[k]};}).sort(function(a,b){return b.v-a.v;});
   var html='<div class="sub">What stops in-scope tenders (a category we sell or grounds, English public buyer). Sample: '+n+' tender'+(n===1?"":"s")+(n<10?' — small sample, read with caution':'')+'.</div>';
   html+=arr.map(function(r){ return '<div class="fl '+(r.v>0?"fl-amber":"fl-na")+'"><b>'+r.k+'</b> &mdash; '+r.v+' ('+(n?Math.round(100*r.v/n):0)+'%)</div>'; }).join("");
-  html+='<div class="fl '+((shortWin+seenLate)>0?"fl-amber":"fl-na")+'"><b>CLOSES SOON</b> &mdash; short window (open under 10 wd): '+shortWin+' &middot; seen late (open 10+ wd, under 10 left): '+seenLate+'</div>';
+  html+='<div class="fl '+((shortWin+seenLate)>0?"fl-amber":"fl-na")+'"><b>CLOSES SOON</b> &mdash; short window (first seen with under 10 wd): '+shortWin+' &middot; seen in time, not acted on (first seen with 10+ wd, under 10 left now): '+seenLate+'</div>';
+  html+='<div class="line hint">First-seen is taken from the publish date; median feed lag is ~1 working day, so almost none are genuinely "seen late by the feed".</div>';
   html+='<div class="line" style="margin-top:8px">Median tender window: <b>'+(medWin!=null?(medWin+" working days"):"n/a")+'</b> &middot; of OVER CAP: <b>'+under150+'</b> under £150k, <b>'+under250+'</b> under £250k.</div>';
   html+='<div class="line" style="margin-top:14px"><button class="btn" id="selfTestBtn">Run self-test (5 fixtures)</button></div><div id="selfTestOut" style="margin-top:6px"></div>';
   html+='<div class="line" style="margin-top:16px"><b>Requirement gaps</b> &mdash; from real assessed tenders (Check a tender):</div><div id="gapReq"><span class="hint">Loading&hellip;</span></div>';
@@ -351,22 +353,23 @@ function renderList(){
   else if(MODE==="local"){ rows=bucketRows("primeable").concat(bucketRows("needssub")).filter(function(t){return t.is_local===true;}); label="local"; }
   else if(MODE==="needssub"){ rows=bucketRows("needssub"); label="needs-a-sub"; }
   else { rows=bucketRows("primeable").concat(bucketRows("needssub")).concat(bucketRows("dropped")); label="open"; }
-  if(!rows.length){ list.innerHTML='<div class="state">No '+label+' tenders right now. New ones arrive each morning &mdash; check back, or try another tab.</div>'; return; }
   var nc=rows.filter(isNew).length, nb=nc?(" &middot; "+nc+" new"):"";
   var note = MODE==="all" ? ' <span class="hint">(primeable first, then needs-a-sub, then dropped with the reason)</span>' : '';
   var whatif="";
   if(MODE==="primeable"){
     function capCount(c){ var old=WHATIF_CAP; WHATIF_CAP=c; var n=bucketRows("primeable").length+bucketRows("needssub").length; WHATIF_CAP=old; return n; }
     var base=capCount(90000), c150=capCount(150000), c250=capCount(250000), cur=(WHATIF_CAP||90000);
-    whatif='<div class="line" style="margin-bottom:10px">What-if cap (this session only): '
+    whatif='<div class="line" style="margin-bottom:10px">What-if cap (preview, this session only): '
       +'<select id="whatifCap" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'
       +'<option value="90000"'+(cur===90000?" selected":"")+'>£90k (default)</option>'
       +'<option value="150000"'+(cur===150000?" selected":"")+'>£150k</option>'
       +'<option value="250000"'+(cur===250000?" selected":"")+'>£250k</option></select>'
       +' <span class="hint">£150k &rarr; '+c150+' &middot; £250k &rarr; '+c250+' (vs '+base+' at £90k)</span></div>';
   }
+  function wireWhatif(){ var wc=document.getElementById("whatifCap"); if(wc){ wc.addEventListener("change",function(){ WHATIF_CAP=parseInt(wc.value,10)||90000; if(WHATIF_CAP===90000) WHATIF_CAP=null; renderList(); }); } }
+  if(!rows.length){ list.innerHTML=whatif+'<div class="state">No '+label+' tenders right now. New ones arrive each morning &mdash; check back, try another tab, or raise the what-if cap.</div>'; wireWhatif(); return; }
   list.innerHTML='<div class="sub">'+rows.length+' '+label+' tender'+(rows.length===1?"":"s")+nb+note+'</div>'+whatif+rows.map(card).join("");
-  var wc=document.getElementById("whatifCap"); if(wc){ wc.addEventListener("change",function(){ WHATIF_CAP=parseInt(wc.value,10)||90000; if(WHATIF_CAP===90000) WHATIF_CAP=null; renderList(); }); }
+  wireWhatif();
   var tb=document.querySelectorAll(".btn[data-id]");
   for(var i=0;i<tb.length;i++){(function(b){b.addEventListener("click",function(){triage(b,b.getAttribute("data-id"));});})(tb[i]);}
   var tk=document.querySelectorAll(".btn[data-track]");
