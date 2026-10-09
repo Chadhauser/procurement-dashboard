@@ -55,6 +55,8 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
     <button data-m="primeable" class="on">Primeable</button>
     <button data-m="local">Local</button>
     <button data-m="needssub">Needs a sub</button>
+    <button data-m="frameworks">Frameworks</button>
+    <button data-m="joinnow">Join now</button>
     <button data-m="all">All open</button>
     <button data-m="pipeline">Pipeline</button>
     <button data-m="gaps">Gaps</button>
@@ -115,10 +117,13 @@ function workingDays(d){ if(!d) return null; var end=new Date(d), now=new Date()
 function wdBetween(a,b){ if(!a||!b) return null; var s=new Date(a), e=new Date(b); if(e<=s) return 0; var cur=new Date(s); cur.setHours(0,0,0,0); var c=0; while(cur<e){ var g=cur.getDay(); if(g!==0&&g!==6)c++; cur.setDate(cur.getDate()+1);} return c; }
 function frameworkCallOff(t){ var s=((t.title||"")).toLowerCase().trim(); if(/call-?off|mini[- ]competition|further competition/.test(s))return "a framework"; return null; }
 function matchSub(t){ var s=(t.title||"")+" "+(t.cls_category||"")+" "+(t.description||""); for(var i=0;i<CFG.subCategories.length;i++){ if(CFG.subCategories[i].re.test(s)) return CFG.subCategories[i]; } return null; }
+function isFrameworkOrDps(t){ if(frameworkCallOff(t)) return false; if(t.is_dps===true) return true; var title=(t.title||"").toLowerCase(); var both=((t.title||"")+" "+(t.description||"")).toLowerCase(); return /framework|dynamic purchasing system|dynamic market|(^|[^a-z])dps([^a-z]|$)/.test(title) || /dynamic purchasing system|dynamic market/.test(both); }
+function isDpsRow(t){ return t.is_dps===true || /dynamic purchasing system|dynamic market|(^|[^a-z])dps([^a-z]|$)/i.test((t.title||"")+" "+(t.description||"")); }
 
 // classify → {bucket:'primeable'|'needssub'|'dropped', tags:[], reasons:[], sub}
 function classify(t){
   var tags=[], reasons=[], amber=[];
+  if(isFrameworkOrDps(t)){ return {bucket:"frameworks", tags:[], reasons:[], amber:[], sub:null, scopeLabel:null}; }
   if(t.value_known===false){ reasons.push("value unknown"); tags.push("VALUE UNKNOWN"); }
   else { var cap=(WHATIF_CAP||CFG.capGBP); var v=val(t); if(v!=null && v>cap){ reasons.push("over £"+Math.round(cap/1000)+"k"); tags.push("OVER CAP"); } }
   if(t.buyer_type==="private"){ reasons.push("not a public buyer"); tags.push("NOT A PUBLIC BUYER"); }
@@ -296,6 +301,7 @@ function runSelfTest(){
   var d30=new Date(Date.now()+30*864e5).toISOString();
   var fScreen=(classify({cls_category:"consulting",title:"Independent programme evaluation",description:"",value_known:true,value_max:60000,buyer_type:"public",nation:"England",deadline_date:d30}).bucket!=="primeable");
   var gScreen=(classify({cls_category:"consulting",title:"Contract management support",description:"",value_known:true,value_max:60000,buyer_type:"public",nation:"England",deadline_date:d30}).bucket==="primeable");
+  var derbyFw=(function(){ var c=classify({title:"Regional Internal Audit Services framework DP1082",description:"framework for ten police and fire bodies",cls_category:"professional_services",is_dps:false,value_known:true,value_max:5000000,buyer_type:"public",nation:"England",deadline_date:d30}); return c.bucket==="frameworks" && c.tags.indexOf("OVER CAP")<0; })();
   var done=0;
   function finish(){ done++; if(done<fx.length) return;
     results.sort(function(a,b){return a.k<b.k?-1:1;});
@@ -303,6 +309,7 @@ function runSelfTest(){
     html='<div class="fl '+(bPass?"fl-green":"fl-red")+'"><b>B '+(bPass?"PASS":"FAIL")+'</b> &mdash; expected BID AS PRIME (radar, grounds + named sub), got '+(bPass?"BID AS PRIME":"not prime")+'</div>'+html;
     html+='<div class="fl '+(fScreen?"fl-green":"fl-red")+'"><b>F screening '+(fScreen?"PASS":"FAIL")+'</b> &mdash; evaluation is not primeable</div>';
     html+='<div class="fl '+(gScreen?"fl-green":"fl-red")+'"><b>G screening '+(gScreen?"PASS":"FAIL")+'</b> &mdash; contract management is primeable</div>';
+    html+='<div class="fl '+(derbyFw?"fl-green":"fl-red")+'"><b>Derbyshire DP1082 '+(derbyFw?"PASS":"FAIL")+'</b> &mdash; £5m framework routes to Frameworks, not OVER CAP</div>';
     out.innerHTML=html;
   }
   fx.forEach(function(f){
@@ -358,18 +365,59 @@ function renderGaps(){
    })
    .catch(function(){ var out=document.getElementById("gapReq"); if(out) out.innerHTML='<span class="hint">Could not load assessed requirements.</span>'; });
 }
+function fwCard(t){
+  var dps=isDpsRow(t), v=val(t);
+  var totalTxt=(t.value_known===false||v==null)?"total value not stated":("£"+Number(v).toLocaleString("en-GB")+" total (whole framework)");
+  return '<div class="card sub"><h3>'+(t.source_url?('<a href="'+esc(t.source_url)+'" target="_blank" rel="noopener">'+esc(t.title)+'</a>'):esc(t.title))+'</h3>'
+   +'<div class="line">'+(dps?'<span class="tag subt">Dynamic market &mdash; can join any time</span>':'<span class="tag cat">Framework</span>')+(t.is_local===true?'<span class="tag local">Local</span>':'')+'</div>'
+   +'<div class="line"><b>'+esc(t.buyer_name||"Unknown buyer")+'</b> &middot; '+totalTxt+(t.deadline_date?(' &middot; closes '+fmtDate(t.deadline_date)):'')+'</div>'
+   +'<div class="line hint">Estimated call-off size: not stated &mdash; Contracts Finder gives no supplier or body count to divide by.</div></div>';
+}
+function renderFrameworks(){
+  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
+  var rows=(ALLROWS||[]).filter(function(t){ return classify(t).bucket==="frameworks"; });
+  var list=document.getElementById("list");
+  var intro='<div class="sub">Frameworks &amp; dynamic markets in the live feed. The &pound;90k cap does not apply here &mdash; the value shown is the whole framework over its life, not one call-off. Already-open dynamic markets you can still join are under <b>Join now</b>.</div>';
+  if(!rows.length){ list.innerHTML=intro+'<div class="state">No framework or dynamic-market notices in the current feed.</div>'; return; }
+  list.innerHTML=intro+'<div class="sub">'+rows.length+' notice'+(rows.length===1?"":"s")+'.</div>'+rows.map(fwCard).join("");
+}
+function dmSetStatus(id,st){ fetch(SUPABASE_URL+"/rest/v1/dynamic_markets?id=eq."+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify({status:st,updated_at:new Date().toISOString()})}); }
+function dmStatusSel(id,cur){ var ss=["not yet","applied","joined"]; var h='<select data-dm="'+esc(id)+'" class="dmstat" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'; for(var i=0;i<ss.length;i++){ h+='<option'+(ss[i]===cur?" selected":"")+'>'+ss[i]+'</option>'; } return h+'</select>'; }
+function renderJoinNow(){
+  var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
+  var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading open dynamic markets&hellip;</div>';
+  fetch(SUPABASE_URL+"/rest/v1/dynamic_markets?select=id,title,buyer,region,deadline_date,source_url,status,sme_suitable&order=deadline_date.desc&limit=500",{headers:authHeaders()})
+   .then(function(r){return r.json();})
+   .then(function(rows){
+     if(!rows||!rows.length){ list.innerHTML='<div class="sub">Open dynamic markets you can apply to join.</div><div class="state">None loaded yet. The weekly pull from Contracts Finder populates this.</div>'; return; }
+     var order={"not yet":0,"applied":1,"joined":2};
+     rows.sort(function(a,b){ var d=(order[a.status]||0)-(order[b.status]||0); if(d) return d; return (a.deadline_date||"")<(b.deadline_date||"")?1:-1; });
+     var joined=rows.filter(function(p){return p.status==="joined";}).length, applied=rows.filter(function(p){return p.status==="applied";}).length;
+     var html='<div class="sub">'+rows.length+' open dynamic markets in our categories &mdash; join any time, pass/fail, not scored against incumbents. '+joined+' joined &middot; '+applied+' applied. Refreshed weekly from Contracts Finder.</div>';
+     html+=rows.map(function(p){ return '<div class="card"><h3>'+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title||"(untitled)")+'</a>'):esc(p.title||"(untitled)"))+'</h3>'
+       +'<div class="line"><b>'+esc(p.buyer||"")+'</b>'+(p.deadline_date?(' &middot; open to '+fmtDate(p.deadline_date)):'')+(p.sme_suitable?' <span class="tag local">SME</span>':'')+'</div>'
+       +(p.region?('<div class="line hint">'+esc(String(p.region).split(",").slice(0,3).join(", "))+(String(p.region).split(",").length>3?"&hellip;":"")+'</div>'):'')
+       +'<div class="line">Status: '+dmStatusSel(p.id,p.status||"not yet")+'</div></div>'; }).join("");
+     list.innerHTML=html;
+     var sel=document.querySelectorAll(".dmstat");
+     for(var i=0;i<sel.length;i++){(function(x){x.addEventListener("change",function(){dmSetStatus(x.getAttribute("data-dm"),x.value);});})(sel[i]);}
+   })
+   .catch(function(){ document.getElementById("list").innerHTML='<div class="state">Could not load dynamic markets.</div>'; });
+}
 function renderList(){
   if(MODE==="gaps"){ return renderGaps(); }
   if(MODE==="expiring"){ return renderExpiring(); }
   if(MODE==="check"){ return renderCheck(); }
   if(MODE==="pipeline"){ return renderPipeline(); }
+  if(MODE==="frameworks"){ return renderFrameworks(); }
+  if(MODE==="joinnow"){ return renderJoinNow(); }
   var btns=document.querySelectorAll("#tabs button");
   for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
   var list=document.getElementById("list"), rows, label;
   if(MODE==="primeable"){ rows=bucketRows("primeable"); label="primeable"; }
   else if(MODE==="local"){ rows=bucketRows("primeable").concat(bucketRows("needssub")).filter(function(t){return t.is_local===true;}); label="local"; }
   else if(MODE==="needssub"){ rows=bucketRows("needssub"); label="needs-a-sub"; }
-  else { rows=bucketRows("primeable").concat(bucketRows("needssub")).concat(bucketRows("dropped")); label="open"; }
+  else { rows=bucketRows("primeable").concat(bucketRows("needssub")).concat(bucketRows("frameworks")).concat(bucketRows("dropped")); label="open"; }
   var nc=rows.filter(isNew).length, nb=nc?(" &middot; "+nc+" new"):"";
   var note = MODE==="all" ? ' <span class="hint">(primeable first, then needs-a-sub, then dropped with the reason)</span>' : '';
   var whatif="";
