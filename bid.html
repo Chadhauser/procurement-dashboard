@@ -58,7 +58,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
     <button data-m="frameworks">Frameworks</button>
     <button data-m="joinnow">Join now</button>
     <button data-m="all">All open</button>
-    <button data-m="pipeline">Pipeline</button>
+    <button data-m="pipeline">Applications</button>
     <button data-m="gaps">Gaps</button>
     <button data-m="expiring">Re-tenders</button>
     <button data-m="check">Check a tender</button>
@@ -254,28 +254,72 @@ function pipelineAdd(btn,id){
    .then(function(r){ btn.textContent=r.ok?"Tracked ✓":"Track failed"; })
    .catch(function(){ btn.disabled=false; btn.textContent="Track failed"; });
 }
-function pipelineSetStage(id,stage){
-  fetch(SUPABASE_URL+"/rest/v1/pipeline?id=eq."+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify({stage:stage,updated_at:new Date().toISOString()})});
+function pipelinePatch(id,fields){
+  fields.updated_at=new Date().toISOString();
+  return fetch(SUPABASE_URL+"/rest/v1/pipeline?id=eq."+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify(fields)});
+}
+var FIN='style="width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:13px"';
+function appForm(){
+  function f(id,label,type,ph){ return '<label class="hint" style="display:block;font-size:12px;margin:8px 0 3px">'+label+'</label><input id="'+id+'" type="'+(type||"text")+'" placeholder="'+(ph||"")+'" '+FIN+'>'; }
+  return '<div class="card" id="appFormCard" style="display:none"><h3>Record an application</h3>'
+    +f("af_title","What we applied for *","text","e.g. Consultancy Services DPS, Lot 1")
+    +f("af_buyer","Buyer","text","e.g. Warwickshire County Council")
+    +'<label class="hint" style="display:block;font-size:12px;margin:8px 0 3px">Entity</label><select id="af_entity" '+FIN+'><option>Edwards Bros</option><option>IPP</option></select>'
+    +f("af_portal","Portal","text","e.g. In-Tend, Delta, MultiQuote")
+    +f("af_ref","Reference","text","e.g. WCC-21850")
+    +f("af_url","Link","url","https://")
+    +f("af_sub","Date submitted","date")
+    +f("af_due","Closes / decision due","date")
+    +'<label class="hint" style="display:block;font-size:12px;margin:8px 0 3px">Stage</label>'+stageSelect("af","submitted").replace('class="pstage"','id="af_stage"')
+    +'<label class="hint" style="display:block;font-size:12px;margin:8px 0 3px">Notes</label><textarea id="af_notes" '+FIN+' rows="3"></textarea>'
+    +'<button class="btn" id="af_save">Save</button> <span class="hint" id="af_msg"></span></div>';
+}
+function appSave(){
+  var g=function(id){ var e=document.getElementById(id); return e?String(e.value||"").trim():""; };
+  var msg=document.getElementById("af_msg");
+  if(!g("af_title")){ msg.textContent="Add what we applied for."; return; }
+  var body={ tender_id:"manual-"+Date.now(), title:g("af_title"), buyer:g("af_buyer")||null, entity:g("af_entity")||null, portal:g("af_portal")||null, reference:g("af_ref")||null, source_url:g("af_url")||null, submitted_on:g("af_sub")||null, deadline:g("af_due")||null, stage:g("af_stage")||"submitted", notes:g("af_notes")||null };
+  var b=document.getElementById("af_save"); b.disabled=true; msg.textContent="Saving…";
+  fetch(SUPABASE_URL+"/rest/v1/pipeline",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify(body)})
+   .then(function(r){ if(r.ok){ renderPipeline(); } else { b.disabled=false; msg.textContent="Save failed ("+r.status+")."; } })
+   .catch(function(){ b.disabled=false; msg.textContent="Save failed."; });
 }
 function renderPipeline(){
   var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
-  var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading pipeline&hellip;</div>';
-  fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id,title,buyer,value_text,source_url,deadline,stage,notes,updated_at&order=updated_at.desc",{headers:authHeaders()})
+  var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading applications&hellip;</div>';
+  fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id,title,buyer,value_text,source_url,deadline,stage,notes,entity,portal,reference,submitted_on,updated_at&order=updated_at.desc",{headers:authHeaders()})
    .then(function(r){return r.json();})
    .then(function(rows){
-     if(!rows||!rows.length){ list.innerHTML='<div class="sub">Pipeline</div><div class="state">Nothing tracked yet. On any tender, tap <b>+ Track</b> to add it here, then set its stage as it progresses.</div>'; return; }
-     var order=["watching","preparing","submitted","won","lost","no-bid","dropped"];
-     rows.sort(function(a,b){ return order.indexOf(a.stage)-order.indexOf(b.stage); });
-     var won=rows.filter(function(p){return p.stage==="won";}).length, sub=rows.filter(function(p){return p.stage==="submitted";}).length;
-     var html='<div class="sub">'+rows.length+' tracked &middot; '+sub+' submitted &middot; '+won+' won</div>';
-     html+=rows.map(function(p){ return '<div class="card"><h3>'+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title||"(untitled)")+'</a>'):esc(p.title||"(untitled)"))+'</h3>'
-       +'<div class="line"><b>'+esc(p.buyer||"")+'</b>'+(p.value_text?(' &middot; '+esc(p.value_text)):'')+(p.deadline?(' &middot; closes '+fmtDate(p.deadline)):'')+'</div>'
-       +'<div class="line">Stage: '+stageSelect(p.id,p.stage)+'</div></div>'; }).join("");
+     rows=rows||[];
+     var top='<button class="btn" id="af_open" style="margin:0 0 12px">+ Record an application</button>'+appForm();
+     if(!rows.length){ list.innerHTML='<div class="sub">Every tender, DPS and framework we have applied for or are working on, whatever portal it was on.</div>'+top+'<div class="state">Nothing recorded yet. Use <b>+ Record an application</b>, or tap <b>+ Track</b> on any tender in the feed.</div>'; wireApp(); return; }
+     var order=["submitted","preparing","watching","won","lost","no-bid","dropped"];
+     rows.sort(function(a,b){ var d=order.indexOf(a.stage)-order.indexOf(b.stage); if(d) return d; return String(b.submitted_on||"")<String(a.submitted_on||"")?-1:1; });
+     function cnt(s){ return rows.filter(function(p){return p.stage===s;}).length; }
+     var html='<div class="sub">'+cnt("submitted")+' submitted &middot; '+cnt("preparing")+' preparing &middot; '+cnt("watching")+' watching &middot; '+cnt("won")+' won &middot; '+cnt("lost")+' lost &middot; '+cnt("no-bid")+' no-bid</div>'+top;
+     var lastStage=null;
+     html+=rows.map(function(p){
+       var hdr=(p.stage!==lastStage)?('<div class="sub" style="margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">'+esc(p.stage||"")+'</div>'):''; lastStage=p.stage;
+       var meta=[]; if(p.entity) meta.push('<span class="tag '+(p.entity==="IPP"?"subt":"local")+'">'+esc(p.entity)+'</span>');
+       var l2=[]; if(p.portal) l2.push(esc(p.portal)); if(p.reference) l2.push('Ref <b>'+esc(p.reference)+'</b>'); if(p.submitted_on) l2.push('submitted '+fmtDate(p.submitted_on)); if(p.deadline) l2.push((p.stage==="submitted"?'decision due ':'closes ')+fmtDate(p.deadline));
+       return hdr+'<div class="card"><h3>'+meta.join("")+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title||"(untitled)")+'</a>'):esc(p.title||"(untitled)"))+'</h3>'
+       +'<div class="line"><b>'+esc(p.buyer||"")+'</b>'+(p.value_text?(' &middot; '+esc(p.value_text)):'')+'</div>'
+       +(l2.length?'<div class="line">'+l2.join(" &middot; ")+'</div>':'')
+       +'<div class="line">Stage: '+stageSelect(p.id,p.stage)+'</div>'
+       +'<textarea class="pnotes" data-pid="'+esc(p.id)+'" rows="2" placeholder="Notes" '+FIN+'>'+esc(p.notes||"")+'</textarea><span class="hint pnmsg" data-pid="'+esc(p.id)+'"></span></div>'; }).join("");
      list.innerHTML=html;
+     wireApp();
      var sel=document.querySelectorAll(".pstage");
-     for(var i=0;i<sel.length;i++){(function(x){x.addEventListener("change",function(){pipelineSetStage(x.getAttribute("data-pid"),x.value);});})(sel[i]);}
+     for(var i=0;i<sel.length;i++){(function(x){x.addEventListener("change",function(){pipelinePatch(x.getAttribute("data-pid"),{stage:x.value});});})(sel[i]);}
+     var nt=document.querySelectorAll(".pnotes");
+     for(var k=0;k<nt.length;k++){(function(x){x.addEventListener("change",function(){ var id=x.getAttribute("data-pid"); var m=document.querySelector('.pnmsg[data-pid="'+id+'"]'); pipelinePatch(id,{notes:x.value}).then(function(r){ if(m) m.textContent=r.ok?"Saved ✓":"Save failed"; }); });})(nt[k]);}
    })
-   .catch(function(){ list.innerHTML='<div class="state">Could not load the pipeline.</div>'; });
+   .catch(function(){ list.innerHTML='<div class="state">Could not load applications.</div>'; });
+}
+function wireApp(){
+  var o=document.getElementById("af_open"), c=document.getElementById("appFormCard"), s=document.getElementById("af_save");
+  if(o&&c){ o.addEventListener("click",function(){ c.style.display=(c.style.display==="none")?"block":"none"; var d=document.getElementById("af_sub"); if(d&&!d.value){ d.value=new Date().toISOString().slice(0,10); } }); }
+  if(s){ s.addEventListener("click",appSave); }
 }
 function bucketRows(bucket){
   var rows=(ALLROWS||[]).filter(function(t){ return classify(t).bucket===bucket; });
