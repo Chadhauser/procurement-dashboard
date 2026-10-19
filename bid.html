@@ -168,6 +168,7 @@ function card(t){
    +subNote
    +'<button class="btn" data-id="'+esc(t.id)+'">Should we bid?</button>'
    +' <button class="btn" data-track="'+esc(t.id)+'">+ Track</button>'
+   +' <button class="btn" data-applied="'+esc(t.id)+'">&#10003; We applied</button>'
    +'<div class="box" id="b-'+esc(t.id)+'" style="display:none"></div></div>';
 }
 function triage(btn,id){
@@ -245,14 +246,26 @@ function assessTender(){
 }
 
 function stageSelect(id,cur){ var ss=["watching","preparing","submitted","won","lost","no-bid","dropped"]; var h='<select data-pid="'+esc(id)+'" class="pstage" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'; for(var i=0;i<ss.length;i++){ h+='<option'+(ss[i]===cur?" selected":"")+'>'+ss[i]+'</option>'; } return h+'</select>'; }
-function pipelineAdd(btn,id){
+function pipelineUpsert(key,fields){
+  // one row per tender: update the existing row if we already have it, otherwise create it
+  return fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id&tender_id=eq."+encodeURIComponent(key),{headers:authHeaders()})
+   .then(function(r){ return r.ok?r.json():[]; })
+   .then(function(ex){
+     if(ex&&ex.length){ return pipelinePatch(ex[0].id,fields); }
+     fields.tender_id=key;
+     return fetch(SUPABASE_URL+"/rest/v1/pipeline",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify(fields)});
+   });
+}
+function pipelineAdd(btn,id,stage){
   var t=null; for(var i=0;i<ALLROWS.length;i++){ if(String(ALLROWS[i].id)===String(id)){ t=ALLROWS[i]; break; } }
   if(!t){ return; }
-  btn.disabled=true; btn.textContent="Tracking…";
-  var body={ tender_id:String(t.id), title:t.title, buyer:t.buyer_name, value_text:money(t), source_url:t.source_url, deadline:(t.deadline_date?String(t.deadline_date).slice(0,10):null), stage:"watching" };
-  fetch(SUPABASE_URL+"/rest/v1/pipeline",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify(body)})
-   .then(function(r){ btn.textContent=r.ok?"Tracked ✓":"Track failed"; })
-   .catch(function(){ btn.disabled=false; btn.textContent="Track failed"; });
+  var applied=(stage==="submitted");
+  btn.disabled=true; btn.textContent=applied?"Recording…":"Tracking…";
+  var body={ title:t.title, buyer:t.buyer_name, value_text:money(t), source_url:t.source_url, deadline:(t.deadline_date?String(t.deadline_date).slice(0,10):null), stage:(stage||"watching") };
+  if(applied){ body.submitted_on=new Date().toISOString().slice(0,10); body.entity="Edwards Bros"; }
+  pipelineUpsert(String(t.id),body)
+   .then(function(r){ btn.textContent=(r&&r.ok)?(applied?"Applied ✓":"Tracked ✓"):(applied?"Record failed":"Track failed"); })
+   .catch(function(){ btn.disabled=false; btn.textContent=applied?"Record failed":"Track failed"; });
 }
 function pipelinePatch(id,fields){
   fields.updated_at=new Date().toISOString();
@@ -292,7 +305,7 @@ function renderPipeline(){
    .then(function(rows){
      rows=rows||[];
      var top='<button class="btn" id="af_open" style="margin:0 0 12px">+ Record an application</button>'+appForm();
-     if(!rows.length){ list.innerHTML='<div class="sub">Every tender, DPS and framework we have applied for or are working on, whatever portal it was on.</div>'+top+'<div class="state">Nothing recorded yet. Use <b>+ Record an application</b>, or tap <b>+ Track</b> on any tender in the feed.</div>'; wireApp(); return; }
+     if(!rows.length){ list.innerHTML='<div class="sub">Every tender, DPS and framework we have applied for or are working on, whatever portal it was on.</div>'+top+'<div class="state">Nothing recorded yet. Tap <b>&#10003; We applied</b> on any tender in the radar, set a Join now market to <b>applied</b>, or use <b>+ Record an application</b> for anything outside the feed.</div>'; wireApp(); return; }
      var order=["submitted","preparing","watching","won","lost","no-bid","dropped"];
      rows.sort(function(a,b){ var d=order.indexOf(a.stage)-order.indexOf(b.stage); if(d) return d; return String(b.submitted_on||"")<String(a.submitted_on||"")?-1:1; });
      function cnt(s){ return rows.filter(function(p){return p.stage===s;}).length; }
@@ -305,12 +318,14 @@ function renderPipeline(){
        return hdr+'<div class="card"><h3>'+meta.join("")+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title||"(untitled)")+'</a>'):esc(p.title||"(untitled)"))+'</h3>'
        +'<div class="line"><b>'+esc(p.buyer||"")+'</b>'+(p.value_text?(' &middot; '+esc(p.value_text)):'')+'</div>'
        +(l2.length?'<div class="line">'+l2.join(" &middot; ")+'</div>':'')
-       +'<div class="line">Stage: '+stageSelect(p.id,p.stage)+'</div>'
+       +'<div class="line">Stage: '+stageSelect(p.id,p.stage)+' &nbsp; Entity: <select class="pent" data-pid="'+esc(p.id)+'" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'+["","Edwards Bros","IPP"].map(function(e){return '<option'+(e===(p.entity||"")?" selected":"")+'>'+e+'</option>';}).join("")+'</select></div>'
        +'<textarea class="pnotes" data-pid="'+esc(p.id)+'" rows="2" placeholder="Notes" '+FIN+'>'+esc(p.notes||"")+'</textarea><span class="hint pnmsg" data-pid="'+esc(p.id)+'"></span></div>'; }).join("");
      list.innerHTML=html;
      wireApp();
      var sel=document.querySelectorAll(".pstage");
      for(var i=0;i<sel.length;i++){(function(x){x.addEventListener("change",function(){pipelinePatch(x.getAttribute("data-pid"),{stage:x.value});});})(sel[i]);}
+     var en=document.querySelectorAll(".pent");
+     for(var e2=0;e2<en.length;e2++){(function(x){x.addEventListener("change",function(){pipelinePatch(x.getAttribute("data-pid"),{entity:x.value||null});});})(en[e2]);}
      var nt=document.querySelectorAll(".pnotes");
      for(var k=0;k<nt.length;k++){(function(x){x.addEventListener("change",function(){ var id=x.getAttribute("data-pid"); var m=document.querySelector('.pnmsg[data-pid="'+id+'"]'); pipelinePatch(id,{notes:x.value}).then(function(r){ if(m) m.textContent=r.ok?"Saved ✓":"Save failed"; }); });})(nt[k]);}
    })
@@ -425,7 +440,8 @@ function renderFrameworks(){
   if(!rows.length){ list.innerHTML=intro+'<div class="state">No framework or dynamic-market notices in the current feed.</div>'; return; }
   list.innerHTML=intro+'<div class="sub">'+rows.length+' notice'+(rows.length===1?"":"s")+'.</div>'+rows.map(fwCard).join("");
 }
-function dmSetStatus(id,st){ fetch(SUPABASE_URL+"/rest/v1/dynamic_markets?id=eq."+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify({status:st,updated_at:new Date().toISOString()})}); }
+var DMROWS={};
+function dmSetStatus(id,st){ var p=DMROWS[id]; if(p&&(st==="applied"||st==="joined")){ var f={title:p.title,buyer:p.buyer,source_url:p.source_url,deadline:(p.deadline_date?String(p.deadline_date).slice(0,10):null),stage:(st==="joined"?"won":"submitted"),portal:"Contracts Finder dynamic market"}; if(st==="applied"){ f.submitted_on=new Date().toISOString().slice(0,10); f.entity="Edwards Bros"; } pipelineUpsert("dm-"+id,f); } fetch(SUPABASE_URL+"/rest/v1/dynamic_markets?id=eq."+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify({status:st,updated_at:new Date().toISOString()})}); }
 function dmStatusSel(id,cur){ var ss=["not yet","applied","joined"]; var h='<select data-dm="'+esc(id)+'" class="dmstat" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'; for(var i=0;i<ss.length;i++){ h+='<option'+(ss[i]===cur?" selected":"")+'>'+ss[i]+'</option>'; } return h+'</select>'; }
 function renderJoinNow(){
   var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
@@ -434,6 +450,7 @@ function renderJoinNow(){
    .then(function(r){return r.json();})
    .then(function(rows){
      if(!rows||!rows.length){ list.innerHTML='<div class="sub">Open dynamic markets you can apply to join.</div><div class="state">None loaded yet. The weekly pull from Contracts Finder populates this.</div>'; return; }
+     for(var q=0;q<rows.length;q++){ DMROWS[rows[q].id]=rows[q]; }
      var order={"not yet":0,"applied":1,"joined":2};
      rows.sort(function(a,b){ var d=(order[a.status]||0)-(order[b.status]||0); if(d) return d; return (a.deadline_date||"")<(b.deadline_date||"")?1:-1; });
      var joined=rows.filter(function(p){return p.status==="joined";}).length, applied=rows.filter(function(p){return p.status==="applied";}).length;
@@ -483,6 +500,8 @@ function renderList(){
   for(var i=0;i<tb.length;i++){(function(b){b.addEventListener("click",function(){triage(b,b.getAttribute("data-id"));});})(tb[i]);}
   var tk=document.querySelectorAll(".btn[data-track]");
   for(var m2=0;m2<tk.length;m2++){(function(b){b.addEventListener("click",function(){pipelineAdd(b,b.getAttribute("data-track"));});})(tk[m2]);}
+  var ap=document.querySelectorAll(".btn[data-applied]");
+  for(var m3=0;m3<ap.length;m3++){(function(b){b.addEventListener("click",function(){pipelineAdd(b,b.getAttribute("data-applied"),"submitted");});})(ap[m3]);}
 }
 function setMode(m){ MODE=m; renderList(); }
 
