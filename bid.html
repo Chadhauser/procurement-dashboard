@@ -79,7 +79,12 @@ var CFG={
   subCategories:[ {re:/tree works|arboricultur|grounds maintenance|landscap|grass cutting|hedge|verge|green space/i, name:"grounds maintenance", sub:"none yet"} ],
   profile:{ piHeld:1000000, heldAccreditations:["cyber essentials"] },
   soldConsulting:/project management|programme management|pmo|contract management|commercial management|procurement support|bid support|business case/i,
-  notSoldConsulting:/evaluation|research|survey|organisational development|training design|strategy|policy|feasibility|environmental assessment/i
+  notSoldConsulting:/evaluation|research|survey|organisational development|training design|strategy|policy|feasibility|environmental assessment/i,
+  // R8.2: what we sell or can prime, for tenders tagged PROFESSIONAL SERVICES or SOFTWARE (one list, used by the screen)
+  soldAny:/project management|programme management|pmo|contract management|commercial management|procurement (support|consultancy|services)|bid (support|writing|management)|business case|monitoring officer|project supervision|project monitoring|energy (efficiency|project)|renewable|net zero project|internal audit|audit services|grounds maintenance|land management|estate management|cyber security|cyber essentials/i,
+  // R8.2: never primeable, whatever the category tag says
+  notSoldGoods:/training courses?|accredited training|certification|city ?& ?guilds|licen[cs]es?\b|licen[cs]ing|subscriptions?|resale|reseller|supply (and|&) deliver/i,
+  checkedCategories:["professional_services","software"]
 };
 
 var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null, RETENDERS=null, RET_ALL=false, WHATIF_CAP=null;
@@ -142,10 +147,16 @@ function classify(t){
     else if(CFG.notSoldConsulting.test(ctext)){ ours=false; scopeLabel="Other consulting"; }
     else { ours=true; scopeLabel="Consulting — check scope"; amber.push("CHECK SCOPE"); }
   }
+  var ttext=((t.title||"")+" "+(t.description||""));
+  if(CFG.notSoldGoods.test(t.title||"")){ ours=false; scopeLabel="Goods, licences or training"; }
+  else if(CFG.checkedCategories.indexOf(t.cls_category)>=0){
+    if(CFG.soldAny.test(ttext)){ ours=true; scopeLabel="Matches what we sell"; }
+    else { ours=false; scopeLabel="Generic "+String(t.cls_category).replace(/_/g," "); }
+  }
   var sub = (t.category==="grounds_maintenance") ? CFG.subCategories[0] : null;
   if(gatesPass && ours) return {bucket:"primeable", tags:tags, reasons:reasons, amber:amber, sub:null, scopeLabel:scopeLabel};
   if(gatesPass && sub) return {bucket:"needssub", tags:tags, reasons:reasons, amber:amber, sub:sub, scopeLabel:scopeLabel};
-  if(!ours && !sub){ reasons.push(scopeLabel==="Other consulting"?"other consulting — not project/contract management":("category not one we sell ("+(t.cls_category||"?")+")")); tags.push("CATEGORY NOT SOLD"); }
+  if(!ours && !sub){ reasons.push(scopeLabel==="Other consulting"?"other consulting — not project/contract management":(scopeLabel==="Goods, licences or training"?"goods, licences or training — not something we sell":(/^Generic /.test(scopeLabel||"")?"generic "+String(t.cls_category).replace(/_/g," ")+" — not one of our services":("category not one we sell ("+(t.cls_category||"?")+")")))); tags.push("CATEGORY NOT SOLD"); }
   return {bucket:"dropped", tags:tags, reasons:reasons, amber:amber, sub:sub, scopeLabel:scopeLabel};
 }
 function isLocal(t){ var c=classify(t); return (c.bucket==="primeable"||c.bucket==="needssub") && t.is_local===true; }
@@ -245,7 +256,8 @@ function assessTender(){
    .catch(function(){ go.disabled=false; out.innerHTML='<span class="hint">Could not reach the assessor.</span>'; });
 }
 
-function stageSelect(id,cur){ var ss=["watching","preparing","submitted","won","lost","no-bid","dropped"]; var h='<select data-pid="'+esc(id)+'" class="pstage" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'; for(var i=0;i<ss.length;i++){ h+='<option'+(ss[i]===cur?" selected":"")+'>'+ss[i]+'</option>'; } return h+'</select>'; }
+var STAGES=["watching","preparing","submitted","approved / on list","won","lost","no-bid","dropped"];
+function stageSelect(id,cur){ var ss=STAGES; if(cur==="approved") cur="approved / on list"; var h='<select data-pid="'+esc(id)+'" class="pstage" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'; for(var i=0;i<ss.length;i++){ h+='<option'+(ss[i]===cur?" selected":"")+'>'+ss[i]+'</option>'; } return h+'</select>'; }
 function pipelineUpsert(key,fields){
   // one row per tender: update the existing row if we already have it, otherwise create it
   return fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id&tender_id=eq."+encodeURIComponent(key),{headers:authHeaders()})
@@ -291,7 +303,7 @@ function appSave(){
   var g=function(id){ var e=document.getElementById(id); return e?String(e.value||"").trim():""; };
   var msg=document.getElementById("af_msg");
   if(!g("af_title")){ msg.textContent="Add what we applied for."; return; }
-  var body={ tender_id:"manual-"+Date.now(), title:g("af_title"), buyer:g("af_buyer")||null, entity:g("af_entity")||null, portal:g("af_portal")||null, reference:g("af_ref")||null, source_url:g("af_url")||null, submitted_on:g("af_sub")||null, deadline:g("af_due")||null, stage:g("af_stage")||"submitted", notes:g("af_notes")||null };
+  var body={ tender_id:"manual-"+Date.now(), title:g("af_title"), buyer:g("af_buyer")||null, entity:g("af_entity")||null, portal:g("af_portal")||null, reference:g("af_ref")||null, source_url:g("af_url")||null, submitted_on:g("af_sub")||null, deadline:g("af_due")||null, stage:((g("af_stage")==="approved / on list")?"approved":(g("af_stage")||"submitted")), notes:g("af_notes")||null };
   var b=document.getElementById("af_save"); b.disabled=true; msg.textContent="Saving…";
   fetch(SUPABASE_URL+"/rest/v1/pipeline",{method:"POST",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify(body)})
    .then(function(r){ if(r.ok){ renderPipeline(); } else { b.disabled=false; msg.textContent="Save failed ("+r.status+")."; } })
@@ -300,32 +312,39 @@ function appSave(){
 function renderPipeline(){
   var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
   var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading applications&hellip;</div>';
-  fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id,title,buyer,value_text,source_url,deadline,stage,notes,entity,portal,reference,submitted_on,updated_at&order=updated_at.desc",{headers:authHeaders()})
+  fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id,title,buyer,value_text,source_url,deadline,stage,notes,entity,portal,reference,submitted_on,contract_value,calloffs,updated_at&order=updated_at.desc",{headers:authHeaders()})
    .then(function(r){return r.json();})
    .then(function(rows){
      rows=rows||[];
      var top='<button class="btn" id="af_open" style="margin:0 0 12px">+ Record an application</button>'+appForm();
      if(!rows.length){ list.innerHTML='<div class="sub">Every tender, DPS and framework we have applied for or are working on, whatever portal it was on.</div>'+top+'<div class="state">Nothing recorded yet. Tap <b>&#10003; We applied</b> on any tender in the radar, set a Join now market to <b>applied</b>, or use <b>+ Record an application</b> for anything outside the feed.</div>'; wireApp(); return; }
-     var order=["submitted","preparing","watching","won","lost","no-bid","dropped"];
+     var order=["submitted","preparing","watching","approved","won","lost","no-bid","dropped"];
      rows.sort(function(a,b){ var d=order.indexOf(a.stage)-order.indexOf(b.stage); if(d) return d; return String(b.submitted_on||"")<String(a.submitted_on||"")?-1:1; });
      function cnt(s){ return rows.filter(function(p){return p.stage===s;}).length; }
-     var html='<div class="sub">'+cnt("submitted")+' submitted &middot; '+cnt("preparing")+' preparing &middot; '+cnt("watching")+' watching &middot; '+cnt("won")+' won &middot; '+cnt("lost")+' lost &middot; '+cnt("no-bid")+' no-bid</div>'+top;
+     var wonVal=rows.filter(function(p){return p.stage==="won";}).reduce(function(a,p){return a+(Number(p.contract_value)||0);},0);
+     var html='<div class="sub">'+cnt("submitted")+' submitted &middot; '+cnt("preparing")+' preparing &middot; '+cnt("watching")+' watching &middot; '+cnt("approved")+' approved &middot; '+cnt("won")+' won (£'+wonVal.toLocaleString("en-GB")+') &middot; '+cnt("lost")+' lost &middot; '+cnt("no-bid")+' no-bid</div>'+top;
      var lastStage=null;
      html+=rows.map(function(p){
-       var hdr=(p.stage!==lastStage)?('<div class="sub" style="margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">'+esc(p.stage||"")+'</div>'):''; lastStage=p.stage;
+       var hdr=(p.stage!==lastStage)?('<div class="sub" style="margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">'+esc(p.stage==="approved"?"approved / on list":(p.stage||""))+'</div>'):''; lastStage=p.stage;
        var meta=[]; if(p.entity) meta.push('<span class="tag '+(p.entity==="IPP"?"subt":"local")+'">'+esc(p.entity)+'</span>');
        var l2=[]; if(p.portal) l2.push(esc(p.portal)); if(p.reference) l2.push('Ref <b>'+esc(p.reference)+'</b>'); if(p.submitted_on) l2.push('submitted '+fmtDate(p.submitted_on)); if(p.deadline) l2.push((p.stage==="submitted"?'decision due ':'closes ')+fmtDate(p.deadline));
        return hdr+'<div class="card"><h3>'+meta.join("")+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title||"(untitled)")+'</a>'):esc(p.title||"(untitled)"))+'</h3>'
        +'<div class="line"><b>'+esc(p.buyer||"")+'</b>'+(p.value_text?(' &middot; '+esc(p.value_text)):'')+'</div>'
        +(l2.length?'<div class="line">'+l2.join(" &middot; ")+'</div>':'')
        +'<div class="line">Stage: '+stageSelect(p.id,p.stage)+' &nbsp; Entity: <select class="pent" data-pid="'+esc(p.id)+'" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'+["","Edwards Bros","IPP"].map(function(e){return '<option'+(e===(p.entity||"")?" selected":"")+'>'+e+'</option>';}).join("")+'</select></div>'
+       +(p.stage==="won"?'<div class="line">Contract value £ <input class="pval" data-pid="'+esc(p.id)+'" type="number" min="0" step="1" value="'+(p.contract_value!=null?esc(p.contract_value):"")+'" style="width:120px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px"></div>':'')
+       +(p.stage==="approved"?'<div class="line">Call-offs received: <input class="pcall" data-pid="'+esc(p.id)+'" type="number" min="0" step="1" value="'+(p.calloffs||0)+'" style="width:70px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px"></div>':'')
        +'<textarea class="pnotes" data-pid="'+esc(p.id)+'" rows="2" placeholder="Notes" '+FIN+'>'+esc(p.notes||"")+'</textarea><span class="hint pnmsg" data-pid="'+esc(p.id)+'"></span></div>'; }).join("");
      list.innerHTML=html;
      wireApp();
      var sel=document.querySelectorAll(".pstage");
-     for(var i=0;i<sel.length;i++){(function(x){x.addEventListener("change",function(){pipelinePatch(x.getAttribute("data-pid"),{stage:x.value});});})(sel[i]);}
+     for(var i=0;i<sel.length;i++){(function(x){x.addEventListener("change",function(){pipelinePatch(x.getAttribute("data-pid"),{stage:(x.value==="approved / on list"?"approved":x.value)}).then(function(){renderPipeline();});});})(sel[i]);}
      var en=document.querySelectorAll(".pent");
      for(var e2=0;e2<en.length;e2++){(function(x){x.addEventListener("change",function(){pipelinePatch(x.getAttribute("data-pid"),{entity:x.value||null});});})(en[e2]);}
+     var pv=document.querySelectorAll(".pval");
+     for(var v2=0;v2<pv.length;v2++){(function(x){x.addEventListener("change",function(){pipelinePatch(x.getAttribute("data-pid"),{contract_value:(x.value===""?null:Number(x.value))}).then(function(){renderPipeline();});});})(pv[v2]);}
+     var pc=document.querySelectorAll(".pcall");
+     for(var c2=0;c2<pc.length;c2++){(function(x){x.addEventListener("change",function(){pipelinePatch(x.getAttribute("data-pid"),{calloffs:(parseInt(x.value,10)||0)});});})(pc[c2]);}
      var nt=document.querySelectorAll(".pnotes");
      for(var k=0;k<nt.length;k++){(function(x){x.addEventListener("change",function(){ var id=x.getAttribute("data-pid"); var m=document.querySelector('.pnmsg[data-pid="'+id+'"]'); pipelinePatch(id,{notes:x.value}).then(function(r){ if(m) m.textContent=r.ok?"Saved ✓":"Save failed"; }); });})(nt[k]);}
    })
@@ -360,6 +379,8 @@ function runSelfTest(){
   var d30=new Date(Date.now()+30*864e5).toISOString();
   var fScreen=(classify({cls_category:"consulting",title:"Independent programme evaluation",description:"",value_known:true,value_max:60000,buyer_type:"public",nation:"England",deadline_date:d30}).bucket!=="primeable");
   var gScreen=(classify({cls_category:"consulting",title:"Contract management support",description:"",value_known:true,value_max:60000,buyer_type:"public",nation:"England",deadline_date:d30}).bucket==="primeable");
+  var cgScreen=(classify({cls_category:"professional_services",title:"Supply & Delivery of various City & Guilds Training Courses & Certification",description:"",buyer_name:"Bedford Borough Council",value_known:true,value_max:11500,buyer_type:"public",nation:"England",deadline_date:d30}).bucket!=="primeable");
+  var adobeScreen=(classify({cls_category:"software",title:"Adobe Licenses for the London Borough of Lewisham",description:"",buyer_name:"Brent",value_known:true,value_max:55000,buyer_type:"public",nation:"England",deadline_date:d30}).bucket!=="primeable");
   var derbyFw=(function(){ var c=classify({title:"Regional Internal Audit Services framework DP1082",description:"framework for ten police and fire bodies",cls_category:"professional_services",is_dps:false,value_known:true,value_max:5000000,buyer_type:"public",nation:"England",deadline_date:d30}); return c.bucket==="frameworks" && c.tags.indexOf("OVER CAP")<0; })();
   var done=0;
   function finish(){ done++; if(done<fx.length) return;
@@ -368,6 +389,8 @@ function runSelfTest(){
     html='<div class="fl '+(bPass?"fl-green":"fl-red")+'"><b>B '+(bPass?"PASS":"FAIL")+'</b> &mdash; expected BID AS PRIME (radar, grounds + named sub), got '+(bPass?"BID AS PRIME":"not prime")+'</div>'+html;
     html+='<div class="fl '+(fScreen?"fl-green":"fl-red")+'"><b>F screening '+(fScreen?"PASS":"FAIL")+'</b> &mdash; evaluation is not primeable</div>';
     html+='<div class="fl '+(gScreen?"fl-green":"fl-red")+'"><b>G screening '+(gScreen?"PASS":"FAIL")+'</b> &mdash; contract management is primeable</div>';
+    html+='<div class="fl '+(cgScreen?"fl-green":"fl-red")+'"><b>City &amp; Guilds training '+(cgScreen?"PASS":"FAIL")+'</b> &mdash; training course supply is not primeable</div>';
+    html+='<div class="fl '+(adobeScreen?"fl-green":"fl-red")+'"><b>Adobe licences '+(adobeScreen?"PASS":"FAIL")+'</b> &mdash; licence resale is not primeable</div>';
     html+='<div class="fl '+(derbyFw?"fl-green":"fl-red")+'"><b>Derbyshire DP1082 '+(derbyFw?"PASS":"FAIL")+'</b> &mdash; £5m framework routes to Frameworks, not OVER CAP</div>';
     out.innerHTML=html;
   }
@@ -441,7 +464,7 @@ function renderFrameworks(){
   list.innerHTML=intro+'<div class="sub">'+rows.length+' notice'+(rows.length===1?"":"s")+'.</div>'+rows.map(fwCard).join("");
 }
 var DMROWS={};
-function dmSetStatus(id,st){ var p=DMROWS[id]; if(p&&(st==="applied"||st==="joined")){ var f={title:p.title,buyer:p.buyer,source_url:p.source_url,deadline:(p.deadline_date?String(p.deadline_date).slice(0,10):null),stage:(st==="joined"?"won":"submitted"),portal:"Contracts Finder dynamic market"}; if(st==="applied"){ f.submitted_on=new Date().toISOString().slice(0,10); f.entity="Edwards Bros"; } pipelineUpsert("dm-"+id,f); } fetch(SUPABASE_URL+"/rest/v1/dynamic_markets?id=eq."+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify({status:st,updated_at:new Date().toISOString()})}); }
+function dmSetStatus(id,st){ var p=DMROWS[id]; if(p&&(st==="applied"||st==="joined")){ var f={title:p.title,buyer:p.buyer,source_url:p.source_url,deadline:(p.deadline_date?String(p.deadline_date).slice(0,10):null),stage:(st==="joined"?"approved":"submitted"),portal:"Contracts Finder dynamic market"}; if(st==="applied"){ f.submitted_on=new Date().toISOString().slice(0,10); f.entity="Edwards Bros"; } pipelineUpsert("dm-"+id,f); } fetch(SUPABASE_URL+"/rest/v1/dynamic_markets?id=eq."+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",apikey:ANON,Authorization:"Bearer "+ACCESS,Prefer:"return=minimal"},body:JSON.stringify({status:st,updated_at:new Date().toISOString()})}); }
 function dmStatusSel(id,cur){ var ss=["not yet","applied","joined"]; var h='<select data-dm="'+esc(id)+'" class="dmstat" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'; for(var i=0;i<ss.length;i++){ h+='<option'+(ss[i]===cur?" selected":"")+'>'+ss[i]+'</option>'; } return h+'</select>'; }
 function renderJoinNow(){
   var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); }
