@@ -52,7 +52,9 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
   <h1>Bid Radar</h1>
   <div class="sub">Open English public-sector tenders screened against the Edwards Bros profile. Tap &ldquo;Should we bid?&rdquo; for a verdict.</div>
   <div class="tabs" id="tabs">
-    <button data-m="primeable" class="on">Primeable</button>
+    <button data-m="today" class="on">Today</button>
+    <button data-m="premarket">Pre-market</button>
+    <button data-m="primeable">Primeable</button>
     <button data-m="local">Local</button>
     <button data-m="needssub">Needs a sub</button>
     <button data-m="frameworks">Frameworks</button>
@@ -84,10 +86,15 @@ var CFG={
   soldAny:/project management|programme management|pmo|contract management|commercial management|procurement (support|consultancy|services)|bid (support|writing|management)|business case|monitoring officer|project supervision|project monitoring|energy (efficiency|project)|renewable|net zero project|internal audit|audit services|grounds maintenance|land management|estate management|cyber security|cyber essentials/i,
   // R8.2: never primeable, whatever the category tag says
   notSoldGoods:/training courses?|accredited training|certification|city ?& ?guilds|licen[cs]es?\b|licen[cs]ing|subscriptions?|resale|reseller|supply (and|&) deliver/i,
-  checkedCategories:["professional_services","software"]
+  checkedCategories:["professional_services","software"],
+  // Pre-market notices are rarely AI-classified, so they are matched on title + description.
+  // Tested 24 Oct 2026 against 245 open England services notices: 17 matched, incl. Derbyshire.
+  pmeMatch:/project management|programme management|\bpmo\b|contract management|commercial management|procurement (support|consultancy|services)|bid (support|writing|management)|business case|monitoring officer|project (supervision|monitoring)|energy (efficiency|project|advice)|renewable|net zero|internal audit|audit services|grounds maintenance|land management|estate management|cyber|data (tool|platform|management|analytics|analysis|services|warehouse|migration|cleansing)|dashboard|business intelligence|\banalytics\b|population health|segmentation|reporting (tool|solution|system)|finance (system|support|transformation)|financial services|accountancy|bookkeeping|payroll/i,
+  pmeNope:/training courses?|accredited training|licen[cs]es?\b|subscriptions?|resale|reseller|supply (and|&) deliver|construction|works contract|building works|refurbishment works|vehicles?\b|catering|cleaning|security guard|care (home|services)|domiciliary|supported living|transport services|waste collection|\bbread\b|\bfood\b|groceries|morning goods/i,
+  todayDays:14
 };
 
-var ACCESS=null, ALLROWS=[], MODE="primeable", LASTVISIT=null, RETENDERS=null, RET_ALL=false, WHATIF_CAP=null;
+var ACCESS=null, ALLROWS=[], PMROWS=[], MODE="today", LASTVISIT=null, RETENDERS=null, RET_ALL=false, WHATIF_CAP=null;
 function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
 function show(id){document.getElementById(id).classList.remove("hidden");}
 function hide(id){document.getElementById(id).classList.add("hidden");}
@@ -270,10 +277,13 @@ function pipelineUpsert(key,fields){
 }
 function pipelineAdd(btn,id,stage){
   var t=null; for(var i=0;i<ALLROWS.length;i++){ if(String(ALLROWS[i].id)===String(id)){ t=ALLROWS[i]; break; } }
+  var pm=null; if(!t){ for(var i2=0;i2<PMROWS.length;i2++){ if(String(PMROWS[i2].id)===String(id)){ pm=PMROWS[i2]; break; } } }
+  if(!t && pm){ t={id:pm.id,title:pm.title,buyer_name:pm.buyer_name,source_url:pm.source_url,deadline_date:pm.respond_by,value_max:pm.value_max,value_min:pm.value_min,value_known:(pm.value_max!=null||pm.value_min!=null)}; }
   if(!t){ return; }
   var applied=(stage==="submitted");
   btn.disabled=true; btn.textContent=applied?"Recording…":"Tracking…";
   var body={ title:t.title, buyer:t.buyer_name, value_text:money(t), source_url:t.source_url, deadline:(t.deadline_date?String(t.deadline_date).slice(0,10):null), stage:(stage||"watching") };
+  if(pm){ body.portal="Find a Tender (pre-market)"; body.notes="Pre-market engagement"+(pm.notice_type?(" ("+pm.notice_type+")"):""); }
   if(applied){ body.submitted_on=new Date().toISOString().slice(0,10); body.entity="Edwards Bros"; }
   pipelineUpsert(String(t.id),body)
    .then(function(r){ btn.textContent=(r&&r.ok)?(applied?"Applied ✓":"Tracked ✓"):(applied?"Record failed":"Track failed"); })
@@ -488,7 +498,84 @@ function renderJoinNow(){
    })
    .catch(function(){ document.getElementById("list").innerHTML='<div class="state">Could not load dynamic markets.</div>'; });
 }
+
+// ---- Pre-market engagement notices (Find a Tender UK2 etc.) -------------------------
+function linkify(txt){ return esc(txt).replace(/(https?:\/\/[^\s<]+)/g,function(u){ return '<a href="'+u+'" target="_blank" rel="noopener">'+(u.length>60?u.slice(0,57)+'&hellip;':u)+'</a>'; }); }
+function pmMatches(p){ var txt=(p.title||"")+" "+String(p.description||"").slice(0,600); return CFG.pmeMatch.test(txt) && !CFG.pmeNope.test(p.title||""); }
+function pmEligible(p){ return (p.nation==="England") && p.buyer_type!=="private" && (!p.main_category || p.main_category==="services"); }
+function pmNew(p){ return LASTVISIT && p.published_date && (new Date(p.published_date).getTime()>LASTVISIT); }
+function loadPremarket(){
+  var now=new Date(), recent=new Date(Date.now()-21*86400000);
+  var q=SUPABASE_URL+"/rest/v1/v_premarket?select=id,source,notice_id,title,description,buyer_name,value_min,value_max,published_date,source_url,nation,is_local,buyer_type,main_category,notice_type,respond_by,how_to_respond"
+    +"&or=(respond_by.gte."+encodeURIComponent(now.toISOString())+",and(respond_by.is.null,published_date.gte."+encodeURIComponent(recent.toISOString())+"))&order=respond_by.asc.nullslast&limit=2000";
+  return fetch(q,{headers:authHeaders()}).then(function(r){ if(!r.ok) throw new Error("pre-market "+r.status); return r.json(); })
+   .then(function(rows){ PMROWS=(rows||[]).filter(pmEligible); return PMROWS; });
+}
+function pmCard(p){
+  var wd=workingDays(p.respond_by), v=(p.value_max!=null?p.value_max:p.value_min);
+  var tags='<span class="tag subt">Pre-market'+(p.notice_type?(' &middot; '+esc(p.notice_type)):'')+'</span>'+(pmNew(p)?'<span class="tag new">New</span>':'')+(p.is_local===true?'<span class="tag local">Local</span>':'');
+  var due=p.respond_by?('Respond by <b>'+fmtDate(p.respond_by)+'</b>'+(wd!=null?(' &middot; '+wd+' working day'+(wd===1?'':'s')+' left'):'')):'No response date given';
+  return '<div class="card'+(p.is_local===true?' local':'')+'"><h3>'+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title)+'</a>'):esc(p.title))+'</h3>'
+   +'<div class="line">'+tags+'</div>'
+   +'<div class="line"><b>'+esc(p.buyer_name||"Unknown buyer")+'</b>'+(v!=null?(' &middot; £'+Number(v).toLocaleString("en-GB")+' estimated'):'')+'</div>'
+   +'<div class="line">'+due+'</div>'
+   +(p.how_to_respond?('<div class="line hint"><b>How to respond:</b> '+linkify(String(p.how_to_respond).slice(0,400))+'</div>'):'')
+   +'<button class="btn" data-track="'+esc(p.id)+'">+ Track</button>'
+   +' <button class="btn" data-applied="'+esc(p.id)+'">&#10003; We responded</button></div>';
+}
+function wireTrackButtons(){
+  var tk=document.querySelectorAll(".btn[data-track]");
+  for(var m2=0;m2<tk.length;m2++){(function(b){b.addEventListener("click",function(){pipelineAdd(b,b.getAttribute("data-track"));});})(tk[m2]);}
+  var ap=document.querySelectorAll(".btn[data-applied]");
+  for(var m3=0;m3<ap.length;m3++){(function(b){b.addEventListener("click",function(){pipelineAdd(b,b.getAttribute("data-applied"),"submitted");});})(ap[m3]);}
+  var tb=document.querySelectorAll(".btn[data-id]");
+  for(var i=0;i<tb.length;i++){(function(b){b.addEventListener("click",function(){triage(b,b.getAttribute("data-id"));});})(tb[i]);}
+}
+function markTabs(){ var btns=document.querySelectorAll("#tabs button"); for(var j=0;j<btns.length;j++){ btns[j].classList.toggle("on", btns[j].getAttribute("data-m")===MODE); } }
+function sortPm(a,b){ var la=a.is_local===true?0:1, lb=b.is_local===true?0:1; if(la!==lb) return la-lb; return String(a.respond_by||"9")<String(b.respond_by||"9")?-1:1; }
+var PM_SHOW_ALL=false;
+function renderPremarket(){
+  markTabs();
+  var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading pre-market notices&hellip;</div>';
+  loadPremarket().then(function(rows){
+    if(MODE!=="premarket") return;
+    var hits=rows.filter(pmMatches).sort(sortPm), others=rows.filter(function(p){return !pmMatches(p);}).sort(sortPm);
+    var intro='<div class="sub">Buyers asking the market before they tender. Free to answer, little competition, and the way to be known before the tender is written. England, public buyers, services. '+hits.length+' match what we sell'+(hits.filter(pmNew).length?(' &middot; '+hits.filter(pmNew).length+' new'):'')+'.</div>';
+    var html=intro+(hits.length?hits.map(pmCard).join(""):'<div class="state">None matching what we sell right now.</div>');
+    html+='<div class="line" style="margin:14px 0"><button class="btn" id="pmAll">'+(PM_SHOW_ALL?'Hide':'Show')+' the other '+others.length+' services notices</button></div>';
+    if(PM_SHOW_ALL) html+=others.map(pmCard).join("");
+    list.innerHTML=html;
+    document.getElementById("pmAll").addEventListener("click",function(){ PM_SHOW_ALL=!PM_SHOW_ALL; renderPremarket(); });
+    wireTrackButtons();
+  }).catch(function(e){ list.innerHTML='<div class="state">Could not load pre-market notices ('+esc(e.message)+').</div>'; });
+}
+
+// ---- Today: the one screen to open each morning --------------------------------------
+function renderToday(){
+  markTabs();
+  var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading today&hellip;</div>';
+  var soon=Date.now()+CFG.todayDays*86400000;
+  var pipeQ=fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id,title,buyer,source_url,deadline,stage,portal&order=deadline.asc.nullslast",{headers:authHeaders()}).then(function(r){return r.ok?r.json():[];});
+  Promise.all([loadPremarket(), pipeQ]).then(function(res){
+    if(MODE!=="today") return;
+    var pms=res[0].filter(pmMatches), pipe=res[1]||[];
+    var respondSoon=pms.filter(function(p){ return p.respond_by && new Date(p.respond_by).getTime()<=soon; }).sort(sortPm);
+    var newPm=pms.filter(function(p){ return pmNew(p) && respondSoon.indexOf(p)<0; }).sort(sortPm);
+    var mine=pipe.filter(function(p){ return (p.stage==="watching"||p.stage==="preparing") && p.deadline && new Date(p.deadline).getTime()<=soon && new Date(p.deadline).getTime()>=Date.now()-86400000; });
+    var prime=bucketRows("primeable"), newPrime=prime.filter(isNew);
+    function section(title,count,body,empty){ return '<h2 style="font-size:15px;margin:18px 0 8px">'+title+(count!=null?(' <span class="hint">('+count+')</span>'):'')+'</h2>'+(count?body:'<div class="hint" style="margin-bottom:8px">'+empty+'</div>'); }
+    var html='<div class="sub">Everything that needs attention, in one place. Respond-by dates within '+CFG.todayDays+' days.</div>';
+    html+=section("Our applications with a deadline soon",mine.length,mine.map(function(p){ var wd=workingDays(p.deadline); return '<div class="card"><h3>'+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title)+'</a>'):esc(p.title))+'</h3><div class="line"><b>'+esc(p.buyer||"")+'</b> &middot; '+esc(p.stage)+' &middot; due <b>'+fmtDate(p.deadline)+'</b>'+(wd!=null?(' ('+wd+' working day'+(wd===1?'':'s')+')'):'')+(p.portal?(' &middot; '+esc(p.portal)):'')+'</div></div>'; }).join(""),"Nothing we're working on is due in the next "+CFG.todayDays+" days.");
+    html+=section("Pre-market: respond soon",respondSoon.length,respondSoon.map(pmCard).join(""),"No matching pre-market notices close in the next "+CFG.todayDays+" days.");
+    html+=section("New tenders we can bid for",newPrime.length,newPrime.map(card).join(""),"No new primeable tenders since your last visit. "+prime.length+" open in <b>Primeable</b>.");
+    html+=section("New pre-market notices",newPm.length,newPm.map(pmCard).join(""),"None new since your last visit.");
+    list.innerHTML=html;
+    wireTrackButtons();
+  }).catch(function(e){ list.innerHTML='<div class="state">Could not load today ('+esc(e.message)+').</div>'; });
+}
 function renderList(){
+  if(MODE==="today"){ return renderToday(); }
+  if(MODE==="premarket"){ return renderPremarket(); }
   if(MODE==="gaps"){ return renderGaps(); }
   if(MODE==="expiring"){ return renderExpiring(); }
   if(MODE==="check"){ return renderCheck(); }
@@ -504,21 +591,8 @@ function renderList(){
   else { rows=bucketRows("primeable").concat(bucketRows("needssub")).concat(bucketRows("frameworks")).concat(bucketRows("dropped")); label="open"; }
   var nc=rows.filter(isNew).length, nb=nc?(" &middot; "+nc+" new"):"";
   var note = MODE==="all" ? ' <span class="hint">(primeable first, then needs-a-sub, then dropped with the reason)</span>' : '';
-  var whatif="";
-  if(MODE==="primeable"){
-    function capCount(c){ var old=WHATIF_CAP; WHATIF_CAP=c; var n=bucketRows("primeable").length+bucketRows("needssub").length; WHATIF_CAP=old; return n; }
-    var base=capCount(90000), c150=capCount(150000), c250=capCount(250000), cur=(WHATIF_CAP||90000);
-    whatif='<div class="line" style="margin-bottom:10px">What-if cap (preview, this session only): '
-      +'<select id="whatifCap" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:inherit;font-size:12px">'
-      +'<option value="90000"'+(cur===90000?" selected":"")+'>£90k (default)</option>'
-      +'<option value="150000"'+(cur===150000?" selected":"")+'>£150k</option>'
-      +'<option value="250000"'+(cur===250000?" selected":"")+'>£250k</option></select>'
-      +' <span class="hint">£150k &rarr; '+c150+' &middot; £250k &rarr; '+c250+' (vs '+base+' at £90k)</span></div>';
-  }
-  function wireWhatif(){ var wc=document.getElementById("whatifCap"); if(wc){ wc.addEventListener("change",function(){ WHATIF_CAP=parseInt(wc.value,10)||90000; if(WHATIF_CAP===90000) WHATIF_CAP=null; renderList(); }); } }
-  if(!rows.length){ list.innerHTML=whatif+'<div class="state">No '+label+' tenders right now. New ones arrive each morning &mdash; check back, try another tab, or raise the what-if cap.</div>'; wireWhatif(); return; }
-  list.innerHTML='<div class="sub">'+rows.length+' '+label+' tender'+(rows.length===1?"":"s")+nb+note+'</div>'+whatif+rows.map(card).join("");
-  wireWhatif();
+  if(!rows.length){ list.innerHTML='<div class="state">No '+label+' tenders right now. New ones arrive each morning &mdash; check back or try another tab.</div>'; return; }
+  list.innerHTML='<div class="sub">'+rows.length+' '+label+' tender'+(rows.length===1?"":"s")+nb+note+'</div>'+rows.map(card).join("");
   var tb=document.querySelectorAll(".btn[data-id]");
   for(var i=0;i<tb.length;i++){(function(b){b.addEventListener("click",function(){triage(b,b.getAttribute("data-id"));});})(tb[i]);}
   var tk=document.querySelectorAll(".btn[data-track]");
@@ -536,12 +610,22 @@ function dedupe(rows){
 }
 function load(retried){
   if(LASTVISIT===null){try{LASTVISIT=parseInt(localStorage.getItem("sb_lastvisit")||"0",10)||0;}catch(x){LASTVISIT=0;}}
-  var nowISO=new Date().toISOString();
-  var q=SUPABASE_URL+"/rest/v1/v_cf?select=id,notice_id,title,buyer_name,cls_category,value_min,value_max,deadline_date,published_date,source_url,nation,is_local,buyer_type,value_known,is_dps,description,category&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(nowISO)+",deadline_date.is.null)&order=deadline_date.asc&limit=1200";
-  fetch(q,{headers:authHeaders()})
-   .then(function(r){ if(r.status===401 && !retried){return refresh().then(function(ok){if(ok){load(true);}else{signout();}return null;});} return r.json(); })
-   .then(function(rows){ if(rows){ ALLROWS=dedupe(rows.filter(function(t){ return !(t.deadline_date && new Date(t.deadline_date)<new Date()); })); renderList(); try{localStorage.setItem("sb_lastvisit",String(Date.now()));}catch(x){} } })
-   .catch(function(e){ document.getElementById("list").innerHTML='<div class="state">Could not load tenders ('+esc(e&&e.message?e.message:"error")+').</div>'; });
+  var nowISO=new Date().toISOString(), PAGE=1000, got=[];
+  var q=SUPABASE_URL+"/rest/v1/v_cf?select=id,source,notice_id,title,buyer_name,cls_category,value_min,value_max,deadline_date,published_date,source_url,nation,is_local,buyer_type,value_known,is_dps,description,category&stage=eq.tender&or=(deadline_date.gte."+encodeURIComponent(nowISO)+",deadline_date.is.null)&order=deadline_date.asc,id.asc";
+  // Supabase returns at most 1,000 rows per request, so page until a short page (cap 20 pages).
+  function page(from){
+    return fetch(q+"&offset="+from+"&limit="+PAGE,{headers:authHeaders()}).then(function(r){
+      if(r.status===401) throw {auth:true};
+      if(!r.ok) throw new Error("tenders "+r.status);
+      return r.json();
+    }).then(function(rows){ got=got.concat(rows||[]); return (rows&&rows.length===PAGE&&from<19*PAGE)?page(from+PAGE):got; });
+  }
+  page(0)
+   .then(function(rows){ ALLROWS=dedupe(rows.filter(function(t){ return !(t.deadline_date && new Date(t.deadline_date)<new Date()); })); renderList(); try{localStorage.setItem("sb_lastvisit",String(Date.now()));}catch(x){} })
+   .catch(function(e){
+     if(e&&e.auth&&!retried){ return refresh().then(function(ok){ if(ok){load(true);} else {signout();} }); }
+     document.getElementById("list").innerHTML='<div class="state">Could not load tenders ('+esc(e&&e.message?e.message:"error")+').</div>';
+   });
 }
 
 document.getElementById("liGo").addEventListener("click",signin);
