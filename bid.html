@@ -21,6 +21,11 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 .btn{background:transparent;border:1px solid var(--line);color:var(--link);border-radius:8px;padding:7px 13px;font:inherit;font-size:13px;cursor:pointer;margin-top:8px}
 .btn:hover{border-color:var(--link)}.btn:disabled{opacity:.6;cursor:default}
 .box{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13px}
+.det{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.5}
+.det h4{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:12px 0 4px}.det h4:first-child{margin-top:0}
+.det .dt{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px}.det .dt b{font-weight:600}
+.det .desc{white-space:pre-wrap;max-height:260px;overflow:auto}
+.find{display:flex;gap:8px;margin:0 0 14px}.find input{flex:1;min-width:0;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:14px}
 .v{font-weight:700;font-size:14px}.v.bid{color:var(--match)}.v.prime{color:var(--match)}.v.sub{color:var(--sub)}.v.watch{color:var(--build)}.v.nobid{color:var(--hard)}
 .row{margin-top:5px}.row b{color:var(--ink)}.hint{color:var(--dim)}
 .state{color:var(--dim);padding:20px 0}
@@ -187,7 +192,8 @@ function card(t){
    +'<button class="btn" data-id="'+esc(t.id)+'">Should we bid?</button>'
    +' <button class="btn" data-track="'+esc(t.id)+'">+ Track</button>'
    +' <button class="btn" data-applied="'+esc(t.id)+'">&#10003; We applied</button>'
-   +'<div class="box" id="b-'+esc(t.id)+'" style="display:none"></div></div>';
+   +' <button class="btn" data-detail="'+esc(t.id)+'">Details</button>'
+   +'<div class="box" id="b-'+esc(t.id)+'" style="display:none"></div><div class="det" id="d-'+esc(t.id)+'" style="display:none"></div></div>';
 }
 function triage(btn,id){
   var box=document.getElementById("b-"+id);box.style.display="block";
@@ -521,9 +527,13 @@ function pmCard(p){
    +'<div class="line">'+due+'</div>'
    +(p.how_to_respond?('<div class="line hint"><b>How to respond:</b> '+linkify(String(p.how_to_respond).slice(0,400))+'</div>'):'')
    +'<button class="btn" data-track="'+esc(p.id)+'">+ Track</button>'
-   +' <button class="btn" data-applied="'+esc(p.id)+'">&#10003; We responded</button></div>';
+   +' <button class="btn" data-applied="'+esc(p.id)+'">&#10003; We responded</button>'
+   +' <button class="btn" data-detail="'+esc(p.id)+'">Details</button>'
+   +'<div class="det" id="d-'+esc(p.id)+'" style="display:none"></div></div>';
 }
 function wireTrackButtons(){
+  var dt=document.querySelectorAll(".btn[data-detail]");
+  for(var d0=0;d0<dt.length;d0++){(function(b){ if(b.dataset.wired) return; b.dataset.wired="1"; b.addEventListener("click",function(){toggleDetails(b,b.getAttribute("data-detail"));});})(dt[d0]);}
   var tk=document.querySelectorAll(".btn[data-track]");
   for(var m2=0;m2<tk.length;m2++){(function(b){b.addEventListener("click",function(){pipelineAdd(b,b.getAttribute("data-track"));});})(tk[m2]);}
   var ap=document.querySelectorAll(".btn[data-applied]");
@@ -564,14 +574,120 @@ function renderToday(){
     var mine=pipe.filter(function(p){ return (p.stage==="watching"||p.stage==="preparing") && p.deadline && new Date(p.deadline).getTime()<=soon && new Date(p.deadline).getTime()>=Date.now()-86400000; });
     var prime=bucketRows("primeable"), newPrime=prime.filter(isNew);
     function section(title,count,body,empty){ return '<h2 style="font-size:15px;margin:18px 0 8px">'+title+(count!=null?(' <span class="hint">('+count+')</span>'):'')+'</h2>'+(count?body:'<div class="hint" style="margin-bottom:8px">'+empty+'</div>'); }
-    var html='<div class="sub">Everything that needs attention, in one place. Respond-by dates within '+CFG.todayDays+' days.</div>';
+    var html=findBox()+'<div class="sub">Everything that needs attention, in one place. Respond-by dates within '+CFG.todayDays+' days.</div>';
     html+=section("Our applications with a deadline soon",mine.length,mine.map(function(p){ var wd=workingDays(p.deadline); return '<div class="card"><h3>'+(p.source_url?('<a href="'+esc(p.source_url)+'" target="_blank" rel="noopener">'+esc(p.title)+'</a>'):esc(p.title))+'</h3><div class="line"><b>'+esc(p.buyer||"")+'</b> &middot; '+esc(p.stage)+' &middot; due <b>'+fmtDate(p.deadline)+'</b>'+(wd!=null?(' ('+wd+' working day'+(wd===1?'':'s')+')'):'')+(p.portal?(' &middot; '+esc(p.portal)):'')+'</div></div>'; }).join(""),"Nothing we're working on is due in the next "+CFG.todayDays+" days.");
     html+=section("Pre-market: respond soon",respondSoon.length,respondSoon.map(pmCard).join(""),"No matching pre-market notices close in the next "+CFG.todayDays+" days.");
     html+=section("New tenders we can bid for",newPrime.length,newPrime.map(card).join(""),"No new primeable tenders since your last visit. "+prime.length+" open in <b>Primeable</b>.");
     html+=section("New pre-market notices",newPm.length,newPm.map(pmCard).join(""),"None new since your last visit.");
     list.innerHTML=html;
-    wireTrackButtons();
+    wireTrackButtons(); wireFind();
   }).catch(function(e){ list.innerHTML='<div class="state">Could not load today ('+esc(e.message)+').</div>'; });
+}
+
+// ---- Full notice details (Tammy, 26 Oct: description, offer, requirements, location, all dates) ----
+function pick(o,path){ var p=path.split("."); for(var i=0;i<p.length;i++){ if(o==null) return null; o=o[p[i]]; } return o; }
+function arr(x){ return Array.isArray(x)?x:(x?[x]:[]); }
+function fmtDT(d){ if(!d) return null; var x=new Date(d); if(isNaN(x)) return esc(d); var s=x.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"}); if(/T\d\d:\d\d/.test(String(d)) && !/T00:00(:00)?/.test(String(d)) && !/T23:59/.test(String(d))) s+=" "+x.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}); return s; }
+function amount(v){ if(!v||v.amount==null) return null; return (v.currency&&v.currency!=="GBP"?v.currency+" ":"£")+Number(v.amount).toLocaleString("en-GB"); }
+function detailsHtml(row){
+  var r=row.raw||{}, t=r.tender||{}, pl=r.planning||{}, out=[];
+  function rows(list){ var h=list.filter(function(x){return x[1];}).map(function(x){return '<b>'+x[0]+'</b><span>'+x[1]+'</span>';}).join(""); return h?'<div class="dt">'+h+'</div>':''; }
+  var eng=arr(pl.milestones).filter(function(m){return m&&m.type==="engagement";})[0];
+  var dur=pick(t,"contractPeriod.durationInDays");
+  var dates=rows([
+    ["Published",fmtDT(r.date||row.published_date)],
+    ["Questions by",fmtDT(pick(t,"enquiryPeriod.endDate"))],
+    ["Respond by",eng?fmtDT(eng.dueDate):null],
+    ["Submit by",fmtDT(pick(t,"tenderPeriod.endDate")||row.deadline_date)],
+    ["Award expected",fmtDT(pick(t,"awardPeriod.endDate")||pick(t,"awardPeriod.startDate"))],
+    ["Contract start",fmtDT(pick(t,"contractPeriod.startDate"))],
+    ["Contract end",fmtDT(pick(t,"contractPeriod.endDate"))],
+    ["Duration",dur?(Math.round(dur/30.4)+" months"):null]
+  ]);
+  if(dates) out.push('<h4>Dates</h4>'+dates);
+  var lots=arr(t.lots);
+  var lotTxt=lots.length>1?lots.map(function(l){ return esc(l.title||("Lot "+(l.id||"")))+(amount(l.value)?(" ("+amount(l.value)+")"):""); }).join("<br>"):null;
+  var sme=lots.some(function(l){return pick(l,"suitability.sme")===true;})||pick(t,"suitability.sme")===true;
+  var offer=rows([
+    ["Value",amount(t.value)||amount(t.minValue)||(row.value_max!=null?("£"+Number(row.value_max).toLocaleString("en-GB")):null)],
+    ["Category",esc(pick(t,"classification.description")||t.mainProcurementCategory||"")||null],
+    ["Procedure",esc(t.procurementMethodDetails||t.procurementMethod||"")||null],
+    ["Suitable for SMEs",sme?"Yes":null],
+    ["Lots",lotTxt]
+  ]);
+  if(offer) out.push('<h4>The offer</h4>'+offer);
+  var locs=[];
+  arr(t.items).forEach(function(it){
+    arr(it&&it.deliveryAddresses).forEach(function(a){ var x=[a.locality,a.region,a.postalCode].filter(Boolean).join(", "); if(x) locs.push(x); });
+    arr(it&&it.deliveryLocations).forEach(function(l){ if(l&&l.description) locs.push(l.description); });
+  });
+  locs=locs.filter(function(x,i){return locs.indexOf(x)===i;}).slice(0,4);
+  var buyer=arr(r.parties).filter(function(p){return arr(p&&p.roles).indexOf("buyer")>=0;})[0];
+  var bAddr=(buyer&&buyer.address)?[buyer.address.locality,buyer.address.postalCode].filter(Boolean).join(", "):"";
+  var loc=rows([["Delivery",locs.length?esc(locs.join("; ")):null],["Buyer",esc((buyer&&buyer.name)||row.buyer_name||"")+(bAddr?(" &middot; "+esc(bAddr)):"")]]);
+  if(loc) out.push('<h4>Location</h4>'+loc);
+  var req=[];
+  arr(pick(t,"selectionCriteria.criteria")).forEach(function(c){ if(c&&c.description) req.push(c.description); });
+  if(typeof t.eligibilityCriteria==="string") req.push("Eligibility: "+t.eligibilityCriteria);
+  arr(t.submissionMethodDetails).forEach(function(x){ if(typeof x==="string") req.push("How to submit: "+x); });
+  if(eng&&eng.description) req.push("How to respond: "+eng.description);
+  if(req.length) out.push('<h4>Requirements</h4>'+req.slice(0,8).map(function(x){return '<div style="margin-bottom:6px">'+linkify(String(x).slice(0,700))+'</div>';}).join(""));
+  var desc=t.description||row.description||"";
+  if(desc) out.push('<h4>Description</h4><div class="desc">'+linkify(String(desc).slice(0,6000))+'</div>');
+  var docs=arr(t.documents).concat(arr(pl.documents)).filter(function(d){return d&&d.url;}).slice(0,8);
+  var links=docs.map(function(d){ return '<a href="'+esc(d.url)+'" target="_blank" rel="noopener">'+esc(d.title||d.description||d.documentType||"Document")+'</a>'; });
+  if(row.source_url) links.unshift('<a href="'+esc(row.source_url)+'" target="_blank" rel="noopener"><b>Full notice</b></a>');
+  if(links.length) out.push('<h4>Documents</h4>'+links.join(" &middot; "));
+  return out.join("")||'<span class="hint">No further details in this notice.</span>';
+}
+function toggleDetails(btn,id){
+  var box=document.getElementById("d-"+id); if(!box) return;
+  if(box.style.display!=="none"){ box.style.display="none"; btn.textContent="Details"; return; }
+  box.style.display="block"; btn.textContent="Hide details"; box.innerHTML='<span class="hint">Loading the full notice&hellip;</span>';
+  fetch(SUPABASE_URL+"/rest/v1/tenders?id=eq."+encodeURIComponent(id)+"&select=id,source,title,buyer_name,description,value_max,deadline_date,published_date,source_url,raw",{headers:authHeaders()})
+   .then(function(r){ if(!r.ok) throw new Error("status "+r.status); return r.json(); })
+   .then(function(rows){ box.innerHTML=(rows&&rows[0])?detailsHtml(rows[0]):'<span class="hint">Notice not found.</span>'; })
+   .catch(function(e){ box.innerHTML='<span class="hint">Could not load details ('+esc(e.message)+').</span>'; });
+}
+
+// ---- Find a notice: paste a title (e.g. from a B2B alert) and find the full notice ----------------
+var FIND_Q="";
+function findBox(){ return '<form class="find" id="findForm"><input id="findQ" placeholder="Find a notice: paste a title from an alert" value="'+esc(FIND_Q)+'"><button class="btn" type="submit">Find</button></form><div id="findOut"></div>'; }
+function wireFind(){ var f=document.getElementById("findForm"); if(!f) return; f.addEventListener("submit",function(e){ e.preventDefault(); FIND_Q=document.getElementById("findQ").value.trim(); runFind(FIND_Q); }); }
+function findWords(q){ var stop={the:1,and:1,"for":1,of:1,to:1,a:1,"in":1,on:1,with:1,services:1,service:1,provision:1,contract:1,tender:1,ltd:1,limited:1,council:1}; return norm(q).replace(/[^a-z0-9 ]/g," ").split(" ").filter(function(w){return w.length>2&&!stop[w];}).slice(0,6); }
+function findCard(t){
+  var v=(t.value_max!=null?t.value_max:t.value_min);
+  var stageLabel={tender:"Tender",planning:"Pre-market",award:"Awarded",awardUpdate:"Awarded"}[t.stage]||t.stage||"";
+  return '<div class="card"><h3>'+(t.source_url?('<a href="'+esc(t.source_url)+'" target="_blank" rel="noopener">'+esc(t.title)+'</a>'):esc(t.title))+'</h3>'
+   +'<div class="line"><span class="tag cat">'+esc(stageLabel)+'</span><span class="tag cat">'+esc(t.source==="find_a_tender"?"Find a Tender":"Contracts Finder")+'</span></div>'
+   +'<div class="line"><b>'+esc(t.buyer_name||"")+'</b>'+(v!=null?(' &middot; £'+Number(v).toLocaleString("en-GB")):'')+(t.deadline_date?(' &middot; closes '+fmtDate(t.deadline_date)):'')+' &middot; published '+fmtDate(t.published_date)+'</div>'
+   +'<button class="btn" data-detail="'+esc(t.id)+'">Details</button> <button class="btn" data-track="'+esc(t.id)+'">+ Track</button>'
+   +'<div class="det" id="d-'+esc(t.id)+'" style="display:none"></div></div>';
+}
+function runFind(q){
+  var out=document.getElementById("findOut"); var w=findWords(q);
+  if(!w.length){ out.innerHTML='<div class="hint" style="margin-bottom:10px">Type at least one distinctive word from the title.</div>'; return; }
+  out.innerHTML='<div class="hint">Searching&hellip;</div>';
+  // Alerts give a title plus a region, and the region is rarely in the title. So: fetch notices whose
+  // title or buyer contains the two most distinctive (longest) words, then rank by how many of ALL the
+  // words appear in title + buyer. If that finds nothing, widen to any word.
+  var cols="id,source,title,buyer_name,stage,value_min,value_max,deadline_date,published_date,source_url";
+  function either(x){ var v=encodeURIComponent("*"+x+"*"); return "or(title.ilike."+v+",buyer_name.ilike."+v+")"; }
+  var key=w.slice().sort(function(a,b){return b.length-a.length;}).slice(0,2);
+  var strict=SUPABASE_URL+"/rest/v1/tenders?select="+cols+"&and=("+key.map(either).join(",")+")&order=published_date.desc&limit=200";
+  var loose=SUPABASE_URL+"/rest/v1/tenders?select="+cols+"&or=("+w.map(function(x){var v=encodeURIComponent("*"+x+"*"); return "title.ilike."+v+",buyer_name.ilike."+v;}).join(",")+")&order=published_date.desc&limit=300";
+  function get(u){ return fetch(u,{headers:authHeaders()}).then(function(r){ if(!r.ok) throw new Error("status "+r.status); return r.json(); }); }
+  function score(t){ var h=norm((t.title||"")+" "+(t.buyer_name||"")); return w.filter(function(x){return h.indexOf(x)>=0;}).length; }
+  function rank(rows,minScore){ return (rows||[]).map(function(t){return {t:t,s:score(t)};}).filter(function(x){return x.s>=minScore;})
+    .sort(function(a,b){ return b.s-a.s || String(b.t.published_date).localeCompare(String(a.t.published_date)); }).slice(0,15).map(function(x){return x.t;}); }
+  var need=Math.max(1,Math.ceil(w.length*0.6));
+  get(strict).then(function(rows){ var r1=rank(rows,need); return r1.length?r1:get(loose).then(function(rs){ return rank(rs,need); }); })
+   .then(function(rows){
+     rows.forEach(function(t){ if(!ALLROWS.some(function(a){return String(a.id)===String(t.id);})) ALLROWS.push(Object.assign({value_known:(t.value_max!=null||t.value_min!=null)},t)); });
+     out.innerHTML=rows.length?('<div class="sub">'+rows.length+' match'+(rows.length===1?'':'es')+' for &ldquo;'+esc(w.join(" "))+'&rdquo;, best first.</div>'+rows.map(findCard).join("")):'<div class="state">No notice found matching: '+esc(w.join(", "))+'. Try fewer or different words from the title.</div>';
+     wireTrackButtons();
+   })
+   .catch(function(e){ out.innerHTML='<div class="state">Search failed ('+esc(e.message)+').</div>'; });
 }
 function renderList(){
   if(MODE==="today"){ return renderToday(); }
@@ -599,6 +715,8 @@ function renderList(){
   for(var m2=0;m2<tk.length;m2++){(function(b){b.addEventListener("click",function(){pipelineAdd(b,b.getAttribute("data-track"));});})(tk[m2]);}
   var ap=document.querySelectorAll(".btn[data-applied]");
   for(var m3=0;m3<ap.length;m3++){(function(b){b.addEventListener("click",function(){pipelineAdd(b,b.getAttribute("data-applied"),"submitted");});})(ap[m3]);}
+  var dt=document.querySelectorAll(".btn[data-detail]");
+  for(var d1=0;d1<dt.length;d1++){(function(b){ if(b.dataset.wired) return; b.dataset.wired="1"; b.addEventListener("click",function(){toggleDetails(b,b.getAttribute("data-detail"));});})(dt[d1]);}
 }
 function setMode(m){ MODE=m; renderList(); }
 
