@@ -7,7 +7,8 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5}
 .wrap{max-width:860px;margin:0 auto;padding:28px 18px 80px}
 h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bottom:16px}.sub a{color:var(--link)}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.tabs .extra{display:none}.tabs.open .extra{display:inline-block}
+.sl{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}.sl h3{font-size:16px;margin:0 0 4px;line-height:1.35}.sl h3 a{color:var(--ink);text-decoration:none}.sl .meta{font-size:14px;color:var(--dim);margin-bottom:8px}.sl .due{font-weight:700;color:var(--ink)}.sl .soon{color:#f08a7a}.sl .kind{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-right:6px}
 .tabs button{background:var(--panel);color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 15px;cursor:pointer;font:inherit;font-size:13px}
 .tabs button:hover{color:var(--ink)}.tabs button.on{background:var(--ink);color:#0e1216;border-color:var(--ink);font-weight:600}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:12px}
@@ -55,20 +56,22 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 <div id="appView" class="wrap hidden">
   <div class="topbar"><span id="who"></span><button class="out" id="signout">Sign out</button></div>
   <h1>Bid Radar</h1>
-  <div class="sub">Open English public-sector tenders screened against the Edwards Bros profile. Tap &ldquo;Should we bid?&rdquo; for a verdict.</div>
+  <div class="sub">Work that fits Edwards Bros, soonest deadline first. Tap a title to open the notice.</div>
   <div class="tabs" id="tabs">
-    <button data-m="today" class="on">Today</button>
-    <button data-m="premarket">Pre-market</button>
-    <button data-m="primeable">Primeable</button>
-    <button data-m="local">Local</button>
-    <button data-m="needssub">Needs a sub</button>
-    <button data-m="frameworks">Frameworks</button>
-    <button data-m="joinnow">Join now</button>
-    <button data-m="all">All open</button>
-    <button data-m="pipeline">Applications</button>
-    <button data-m="gaps">Gaps</button>
-    <button data-m="expiring">Re-tenders</button>
-    <button data-m="check">Check a tender</button>
+    <button data-m="shortlist" class="on">Shortlist</button>
+    <button data-m="pipeline" class="keep">Our applications</button>
+    <button id="moreBtn" class="keep" type="button">More &#9662;</button>
+    <button data-m="today" class="extra">Today</button>
+    <button data-m="premarket" class="extra">Pre-market</button>
+    <button data-m="primeable" class="extra">Primeable</button>
+    <button data-m="local" class="extra">Local</button>
+    <button data-m="needssub" class="extra">Needs a sub</button>
+    <button data-m="frameworks" class="extra">Frameworks</button>
+    <button data-m="joinnow" class="extra">Join now</button>
+    <button data-m="all" class="extra">All open</button>
+    <button data-m="gaps" class="extra">Gaps</button>
+    <button data-m="expiring" class="extra">Re-tenders</button>
+    <button data-m="check" class="extra">Check a tender</button>
   </div>
   <div id="list"><div class="state">Loading tenders&hellip;</div></div>
 </div>
@@ -99,7 +102,7 @@ var CFG={
   todayDays:14
 };
 
-var ACCESS=null, ALLROWS=[], PMROWS=[], MODE="today", LASTVISIT=null, RETENDERS=null, RET_ALL=false, WHATIF_CAP=null;
+var ACCESS=null, ALLROWS=[], PMROWS=[], MODE="shortlist", LASTVISIT=null, RETENDERS=null, RET_ALL=false, WHATIF_CAP=null;
 function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
 function show(id){document.getElementById(id).classList.remove("hidden");}
 function hide(id){document.getElementById(id).classList.add("hidden");}
@@ -689,7 +692,36 @@ function runFind(q){
    })
    .catch(function(e){ out.innerHTML='<div class="state">Search failed ('+esc(e.message)+').</div>'; });
 }
+
+// ---- Shortlist: the one screen for Tammy (3 Nov: "very hard to use") ---------------------------
+function slCard(x){
+  var wd=workingDays(x.due), soon=(wd!=null&&wd<=5);
+  var v=x.value!=null?("£"+Number(x.value).toLocaleString("en-GB")):"";
+  return '<div class="sl"><div><span class="kind">'+esc(x.kind)+'</span>'+(x.local?'<span class="tag local">Near us</span>':'')+'</div>'
+   +'<h3>'+(x.url?('<a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>'):esc(x.title))+'</h3>'
+   +'<div class="meta">'+esc(x.buyer||"")+(v?(' &middot; '+v):'')+'</div>'
+   +'<div class="meta">'+(x.due?('<span class="due'+(soon?' soon':'')+'">'+x.verb+' '+fmtDate(x.due)+'</span>'+(wd!=null?(' &middot; '+wd+' working day'+(wd===1?'':'s')+' left'):'')):'No closing date given')+'</div>'
+   +'<button class="btn" data-detail="'+esc(x.id)+'">Details</button> <button class="btn" data-track="'+esc(x.id)+'">Save</button> <button class="btn" data-applied="'+esc(x.id)+'">&#10003; We applied</button>'
+   +'<div class="det" id="d-'+esc(x.id)+'" style="display:none"></div></div>';
+}
+function renderShortlist(){
+  markTabs();
+  var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading&hellip;</div>';
+  loadPremarket().then(function(pms){
+    if(MODE!=="shortlist") return;
+    var items=[];
+    bucketRows("primeable").forEach(function(t){ items.push({id:t.id,kind:"Tender",title:t.title,buyer:t.buyer_name,value:val(t),due:t.deadline_date,verb:"Closes",url:t.source_url,local:t.is_local===true}); });
+    bucketRows("needssub").forEach(function(t){ items.push({id:t.id,kind:"Tender (with a partner)",title:t.title,buyer:t.buyer_name,value:val(t),due:t.deadline_date,verb:"Closes",url:t.source_url,local:t.is_local===true}); });
+    pms.filter(pmMatches).forEach(function(p){ items.push({id:p.id,kind:"Early chat with buyer",title:p.title,buyer:p.buyer_name,value:(p.value_max!=null?p.value_max:p.value_min),due:p.respond_by,verb:"Reply by",url:p.source_url,local:p.is_local===true}); });
+    items.sort(function(a,b){ return String(a.due||"9999").localeCompare(String(b.due||"9999")); });
+    var help='<div class="sl" style="border-color:rgba(111,208,192,.5)"><b>How to use this</b><div class="meta" style="margin:6px 0 0">1. Read down the list: only work that fits us is here, soonest deadline first.<br>2. Tap a title to open the notice on the buyer&rsquo;s portal, or <b>Details</b> to see it here.<br>3. Tap <b>Save</b> to keep one, or <b>&#10003; We applied</b> once it&rsquo;s sent. Both show under <b>Our applications</b>.<br>Got a title from an email alert? Paste it in the box above to find the full notice.</div></div>';
+    var html=findBox()+help+'<div class="sub">'+items.length+' that fit us. &ldquo;Early chat with buyer&rdquo; means the buyer wants suppliers&rsquo; views before tendering: free to answer.</div>';
+    html+=items.length?items.map(slCard).join(""):'<div class="state">Nothing that fits us right now. New work arrives each morning.</div>';
+    list.innerHTML=html; wireTrackButtons(); wireFind();
+  }).catch(function(e){ list.innerHTML='<div class="state">Could not load ('+esc(e.message)+').</div>'; });
+}
 function renderList(){
+  if(MODE==="shortlist"){ return renderShortlist(); }
   if(MODE==="today"){ return renderToday(); }
   if(MODE==="premarket"){ return renderPremarket(); }
   if(MODE==="gaps"){ return renderGaps(); }
@@ -749,7 +781,8 @@ function load(retried){
 document.getElementById("liGo").addEventListener("click",signin);
 document.getElementById("liPass").addEventListener("keydown",function(e){if(e.key==="Enter")signin();});
 document.getElementById("signout").addEventListener("click",signout);
-var tabBtns=document.querySelectorAll("#tabs button");
+document.getElementById("moreBtn").addEventListener("click",function(){ document.getElementById("tabs").classList.toggle("open"); });
+var tabBtns=document.querySelectorAll("#tabs button[data-m]");
 for(var k=0;k<tabBtns.length;k++){(function(b){b.addEventListener("click",function(){setMode(b.getAttribute("data-m"));});})(tabBtns[k]);}
 (function init(){ var em=null;try{em=localStorage.getItem("sb_email");}catch(x){} refresh().then(function(ok){ if(ok){startApp(em);} else { clearSession(); show("loginView"); } }); })();
 </script>
