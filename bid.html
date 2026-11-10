@@ -5,7 +5,7 @@
 <style>
 :root{--bg:#0e1216;--panel:#161c22;--line:#2a343d;--ink:#eef2f4;--dim:#94a2ad;--link:#83c0ff;--match:#5fd08a;--build:#f4c560;--hard:#f08a7a;--eb:#6fd0c0;--sub:#9db4ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5}
-.wrap{max-width:860px;margin:0 auto;padding:28px 18px 80px}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 24px 80px}
 h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bottom:16px}.sub a{color:var(--link)}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.tabs .extra{display:none}.tabs.open .extra{display:inline-block}
 .sl{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}.sl h3{font-size:16px;margin:0 0 4px;line-height:1.35}.sl h3 a{color:var(--ink);text-decoration:none}.sl .meta{font-size:14px;color:var(--dim);margin-bottom:8px}.sl .due{font-weight:700;color:var(--ink)}.sl .soon{color:#f08a7a}.sl .kind{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-right:6px}
@@ -44,6 +44,14 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 .ta:focus{outline:none;border-color:var(--link)}
 .fl{padding:6px 10px;margin:4px 0;border-left:3px solid var(--line);background:#121820;border-radius:6px;font-size:13px}.fl b{color:var(--ink)}
 .fl-red{border-color:var(--hard)}.fl-amber{border-color:var(--build)}.fl-green{border-color:var(--match)}.fl-na{border-color:var(--line);opacity:.6}
+
+.slt{width:100%;table-layout:fixed;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:8px;font-size:14px}
+.slt th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.slt td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+.slt tr.detrow td{border-top:0;padding:0 12px}
+.slt td.t a{color:var(--ink);font-weight:600;text-decoration:none}.slt td.t a:hover{text-decoration:underline}
+.slt .b{color:var(--dim);font-size:13px}.slt .soon{color:#f08a7a;font-weight:700}.slt .nw{white-space:nowrap}
+.slt select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:13px}
 </style></head><body>
 
 <div id="loginView" class="login hidden">
@@ -56,7 +64,7 @@ h1{font-size:26px;margin:0 0 4px}.sub{color:var(--dim);font-size:13px;margin-bot
 <div id="appView" class="wrap hidden">
   <div class="topbar"><span id="who"></span><button class="out" id="signout">Sign out</button></div>
   <h1>Bid Radar</h1>
-  <div class="sub">Work that fits Edwards Bros, soonest deadline first. Tap a title to open the notice.</div>
+  <div class="sub">Work that fits Edwards Bros, soonest deadline first. Click a title to open the notice, or <b>Details</b> to read it here.</div>
   <div class="tabs" id="tabs">
     <button data-m="shortlist" class="on">Shortlist</button>
     <button data-m="pipeline" class="keep">Our applications</button>
@@ -194,7 +202,7 @@ function card(t){
    +subNote
    +'<button class="btn" data-id="'+esc(t.id)+'">Should we bid?</button>'
    +' <button class="btn" data-track="'+esc(t.id)+'">+ Track</button>'
-   +' <button class="btn" data-applied="'+esc(t.id)+'">&#10003; We applied</button>'
+   +' <button class="btn" data-applied="'+esc(t.id)+'">Mark as applied</button>'
    +' <button class="btn" data-detail="'+esc(t.id)+'">Details</button>'
    +'<div class="box" id="b-'+esc(t.id)+'" style="display:none"></div><div class="det" id="d-'+esc(t.id)+'" style="display:none"></div></div>';
 }
@@ -336,7 +344,7 @@ function renderPipeline(){
    .then(function(rows){
      rows=rows||[];
      var top='<button class="btn" id="af_open" style="margin:0 0 12px">+ Record an application</button>'+appForm();
-     if(!rows.length){ list.innerHTML='<div class="sub">Every tender, DPS and framework we have applied for or are working on, whatever portal it was on.</div>'+top+'<div class="state">Nothing recorded yet. Tap <b>&#10003; We applied</b> on any tender in the radar, set a Join now market to <b>applied</b>, or use <b>+ Record an application</b> for anything outside the feed.</div>'; wireApp(); return; }
+     if(!rows.length){ list.innerHTML='<div class="sub">Every tender, DPS and framework we have applied for or are working on, whatever portal it was on.</div>'+top+'<div class="state">Nothing recorded yet. Set any card in the radar to <b>Applied</b>, set a Join now market to <b>applied</b>, or use <b>+ Record an application</b> for anything outside the feed.</div>'; wireApp(); return; }
      var order=["submitted","preparing","watching","approved","won","lost","no-bid","dropped"];
      rows.sort(function(a,b){ var d=order.indexOf(a.stage)-order.indexOf(b.stage); if(d) return d; return String(b.submitted_on||"")<String(a.submitted_on||"")?-1:1; });
      function cnt(s){ return rows.filter(function(p){return p.stage===s;}).length; }
@@ -530,7 +538,7 @@ function pmCard(p){
    +'<div class="line">'+due+'</div>'
    +(p.how_to_respond?('<div class="line hint"><b>How to respond:</b> '+linkify(String(p.how_to_respond).slice(0,400))+'</div>'):'')
    +'<button class="btn" data-track="'+esc(p.id)+'">+ Track</button>'
-   +' <button class="btn" data-applied="'+esc(p.id)+'">&#10003; We responded</button>'
+   +' <button class="btn" data-applied="'+esc(p.id)+'">Mark as responded</button>'
    +' <button class="btn" data-detail="'+esc(p.id)+'">Details</button>'
    +'<div class="det" id="d-'+esc(p.id)+'" style="display:none"></div></div>';
 }
@@ -693,31 +701,80 @@ function runFind(q){
    .catch(function(e){ out.innerHTML='<div class="state">Search failed ('+esc(e.message)+').</div>'; });
 }
 
-// ---- Shortlist: the one screen for Tammy (3 Nov: "very hard to use") ---------------------------
-function slCard(x){
-  var wd=workingDays(x.due), soon=(wd!=null&&wd<=5);
-  var v=x.value!=null?("£"+Number(x.value).toLocaleString("en-GB")):"";
-  return '<div class="sl"><div><span class="kind">'+esc(x.kind)+'</span>'+(x.local?'<span class="tag local">Near us</span>':'')+'</div>'
-   +'<h3>'+(x.url?('<a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>'):esc(x.title))+'</h3>'
-   +'<div class="meta">'+esc(x.buyer||"")+(v?(' &middot; '+v):'')+'</div>'
-   +'<div class="meta">'+(x.due?('<span class="due'+(soon?' soon':'')+'">'+x.verb+' '+fmtDate(x.due)+'</span>'+(wd!=null?(' &middot; '+wd+' working day'+(wd===1?'':'s')+' left'):'')):'No closing date given')+'</div>'
-   +'<button class="btn" data-detail="'+esc(x.id)+'">Details</button> <button class="btn" data-track="'+esc(x.id)+'">Save</button> <button class="btn" data-applied="'+esc(x.id)+'">&#10003; We applied</button>'
-   +'<div class="det" id="d-'+esc(x.id)+'" style="display:none"></div></div>';
+// ---- Shortlist: the one screen for Tammy (3 Nov "very hard to use"; 10 Nov: buttons read as if we had applied,
+// and work we're already on was missing). Two sections: what we're working on (from Our applications, whatever
+// portal it came from), then new work that fits us. Each card has ONE status control showing the real status.
+var SLITEMS={};
+var SL_STATUS=[["","Not started"],["preparing","Working on it"],["submitted","Applied"],["no-bid","Not for us"]];
+function slStatusOf(stage){ if(stage==="watching"||stage==="preparing") return "preparing"; if(stage==="submitted") return "submitted"; if(stage==="no-bid"||stage==="dropped") return "no-bid"; return ""; }
+function slBadge(st){ var m={"":["Not started","#2a323a","var(--dim)"],preparing:["Working on it","rgba(240,190,90,.18)","#f0be5a"],submitted:["Applied","rgba(111,208,192,.18)","var(--eb)"],"no-bid":["Not for us","#2a323a","var(--dim)"]}[st];
+  return '<span style="display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:'+m[1]+';color:'+m[2]+'">'+m[0]+'</span>'; }
+function slRow(x){
+  SLITEMS[x.key]=x;
+  var wd=workingDays(x.due), soon=(wd!=null&&wd<=5&&x.status!=="submitted");
+  var v=x.value!=null&&x.value!==""?(typeof x.value==="number"?("£"+Number(x.value).toLocaleString("en-GB")):esc(x.value)):"";
+  var opts=SL_STATUS.filter(function(o){ return !(x.pid&&o[0]===""); }).map(function(o){ return '<option value="'+o[0]+'"'+(o[0]===x.status?" selected":"")+'>'+o[1]+'</option>'; }).join("");
+  var due=x.due?('<div class="nw'+(soon?' soon':'')+'">'+fmtDate(x.due)+'</div><div class="b">'+(x.status==="submitted"?"decision due":(x.verb==="Reply by"?"reply by":"closes"))+(wd!=null&&x.status!=="submitted"?(' &middot; '+(wd===0?'today or past':wd+' working day'+(wd===1?'':'s'))):'')+'</div>'):'<span class="b">No date given</span>';
+  return '<tr><td class="nw">'+slBadge(x.status)+'</td>'
+   +'<td class="t">'+(x.url?('<a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>'):'<b>'+esc(x.title)+'</b>')
+   +'<div class="b">'+esc(x.buyer||"")+(x.portal?(' &middot; '+esc(x.portal)):'')+'</div></td>'
+   +'<td class="b">'+esc(x.kind)+(x.local?'<div><span class="tag local">Near us</span></div>':'')+'</td>'
+   +'<td class="nw">'+(v||'<span class="b">&ndash;</span>')+'</td>'
+   +'<td>'+due+'</td>'
+   +'<td class="nw"><select class="slst" data-key="'+esc(x.key)+'" title="Change status">'+opts+'</select> '
+   +(x.feedId?'<button class="btn" data-detail="'+esc(x.feedId)+'">Details</button>':'')
+   +'<div class="hint slmsg" data-key="'+esc(x.key)+'"></div></td></tr>'
+   +(x.feedId?'<tr class="detrow"><td colspan="6"><div class="det" id="d-'+esc(x.feedId)+'" style="display:none"></div></td></tr>':'');
+}
+function slTable(items){ return '<table class="slt"><colgroup><col style="width:130px"><col><col style="width:170px"><col style="width:110px"><col style="width:190px"><col style="width:230px"></colgroup><thead><tr><th>Status</th><th>Opportunity</th><th>Type</th><th>Value</th><th>Deadline</th><th>Change status</th></tr></thead><tbody>'+items.map(slRow).join("")+'</tbody></table>'; }
+function slSetStatus(sel){
+  var x=SLITEMS[sel.getAttribute("data-key")], st=sel.value, msg=document.querySelector('.slmsg[data-key="'+sel.getAttribute("data-key")+'"]');
+  if(!x) return;
+  if(!st) return;
+  var f={stage:st};
+  if(st==="submitted"){ f.submitted_on=new Date().toISOString().slice(0,10); }
+  if(!x.pid){ f.title=x.title; f.buyer=x.buyer||null; f.source_url=x.url||null; f.deadline=x.due?String(x.due).slice(0,10):null; f.entity="Edwards Bros";
+    f.value_text=(typeof x.value==="number")?("£"+Number(x.value).toLocaleString("en-GB")):null;
+    if(x.kind==="Early chat with buyer"){ f.portal="Find a Tender (pre-market)"; f.notes="Pre-market engagement"; } }
+  sel.disabled=true; if(msg) msg.textContent="Saving…";
+  (x.pid?pipelinePatch(x.pid,f):pipelineUpsert(String(x.feedId),f))
+   .then(function(r){ if(r&&r.ok===false) throw new Error(r.status); renderShortlist(); })
+   .catch(function(){ sel.disabled=false; if(msg) msg.textContent="Not saved, try again"; });
 }
 function renderShortlist(){
   markTabs();
   var list=document.getElementById("list"); list.innerHTML='<div class="state">Loading&hellip;</div>';
-  loadPremarket().then(function(pms){
+  var pipe=fetch(SUPABASE_URL+"/rest/v1/pipeline?select=id,tender_id,title,buyer,value_text,source_url,deadline,stage,portal&order=updated_at.desc",{headers:authHeaders()})
+    .then(function(r){ if(!r.ok) throw new Error("applications "+r.status); return r.json(); });
+  Promise.all([loadPremarket(),pipe]).then(function(res){
     if(MODE!=="shortlist") return;
-    var items=[];
-    bucketRows("primeable").forEach(function(t){ items.push({id:t.id,kind:"Tender",title:t.title,buyer:t.buyer_name,value:val(t),due:t.deadline_date,verb:"Closes",url:t.source_url,local:t.is_local===true}); });
-    bucketRows("needssub").forEach(function(t){ items.push({id:t.id,kind:"Tender (with a partner)",title:t.title,buyer:t.buyer_name,value:val(t),due:t.deadline_date,verb:"Closes",url:t.source_url,local:t.is_local===true}); });
-    pms.filter(pmMatches).forEach(function(p){ items.push({id:p.id,kind:"Early chat with buyer",title:p.title,buyer:p.buyer_name,value:(p.value_max!=null?p.value_max:p.value_min),due:p.respond_by,verb:"Reply by",url:p.source_url,local:p.is_local===true}); });
-    items.sort(function(a,b){ return String(a.due||"9999").localeCompare(String(b.due||"9999")); });
-    var help='<div class="sl" style="border-color:rgba(111,208,192,.5)"><b>How to use this</b><div class="meta" style="margin:6px 0 0">1. Read down the list: only work that fits us is here, soonest deadline first.<br>2. Tap a title to open the notice on the buyer&rsquo;s portal, or <b>Details</b> to see it here.<br>3. Tap <b>Save</b> to keep one, or <b>&#10003; We applied</b> once it&rsquo;s sent. Both show under <b>Our applications</b>.<br>Got a title from an email alert? Paste it in the box above to find the full notice.</div></div>';
-    var html=findBox()+help+'<div class="sub">'+items.length+' that fit us. &ldquo;Early chat with buyer&rdquo; means the buyer wants suppliers&rsquo; views before tendering: free to answer.</div>';
-    html+=items.length?items.map(slCard).join(""):'<div class="state">Nothing that fits us right now. New work arrives each morning.</div>';
+    var pms=res[0]||[], prow=res[1]||[], byTender={};
+    prow.forEach(function(p){ if(p.tender_id) byTender[String(p.tender_id)]=p; });
+    SLITEMS={};
+    // 1. what we're working on: everything in Our applications still live (watching, preparing, or applied and awaiting a decision)
+    var today=new Date(); today.setHours(0,0,0,0);
+    var mine=prow.filter(function(p){ return ["watching","preparing","submitted"].indexOf(p.stage)>=0; }).map(function(p){
+      var isPm=/pre-market/i.test(p.portal||"");
+      return {key:"p-"+p.id,pid:p.id,feedId:(p.tender_id&&!/^manual-|^dm-/.test(p.tender_id))?p.tender_id:null,kind:isPm?"Early chat with buyer":"Tender / application",title:p.title||"(untitled)",buyer:p.buyer,value:p.value_text,due:p.deadline,verb:isPm?"Reply by":"Closes",url:p.source_url,portal:isPm?null:p.portal,status:slStatusOf(p.stage)}; });
+    mine.sort(function(a,b){ var o={preparing:0,submitted:1}; var d=(o[a.status]||0)-(o[b.status]||0); return d||String(a.due||"9999").localeCompare(String(b.due||"9999")); });
+    // 2. new work that fits us, leaving out anything already in Our applications (any stage)
+    var fresh=[];
+    function add(it){ if(byTender[String(it.feedId)]) return; fresh.push(it); }
+    bucketRows("primeable").forEach(function(t){ add({key:"t-"+t.id,feedId:t.id,kind:"Tender",title:t.title,buyer:t.buyer_name,value:val(t),due:t.deadline_date,verb:"Closes",url:t.source_url,local:t.is_local===true,status:""}); });
+    bucketRows("needssub").forEach(function(t){ add({key:"t-"+t.id,feedId:t.id,kind:"Tender (with a partner)",title:t.title,buyer:t.buyer_name,value:val(t),due:t.deadline_date,verb:"Closes",url:t.source_url,local:t.is_local===true,status:""}); });
+    pms.filter(pmMatches).forEach(function(p){ add({key:"t-"+p.id,feedId:p.id,kind:"Early chat with buyer",title:p.title,buyer:p.buyer_name,value:(p.value_max!=null?p.value_max:p.value_min),due:p.respond_by,verb:"Reply by",url:p.source_url,local:p.is_local===true,status:""}); });
+    fresh.sort(function(a,b){ return String(a.due||"9999").localeCompare(String(b.due||"9999")); });
+    var help='<div class="sl" style="border-color:rgba(111,208,192,.5)"><b>How to use this</b><div class="meta" style="margin:6px 0 0">'
+      +'The coloured label is the real status. Change it in the last column.<br>'
+      +'<b>Working on it</b> moves it to the top table. <b>Applied</b> records the date. <b>Not for us</b> hides it.<br>'
+      +'Click a title to open the notice, or <b>Details</b> to read it here. Paste an alert title in the box above to find it.</div></div>';
+    function head(t,n,sub){ return '<h2 style="font-size:17px;margin:18px 0 4px">'+t+' <span class="hint" style="font-weight:400">('+n+')</span></h2>'+(sub?'<div class="sub">'+sub+'</div>':''); }
+    var html=findBox()+help
+      +head("We&rsquo;re working on",mine.length,"")+(mine.length?slTable(mine):'<div class="state">Nothing yet. Set a card below to <b>Working on it</b>, or add anything from another portal under <b>Our applications</b>.</div>')
+      +head("New work that fits us",fresh.length,"&ldquo;Early chat with buyer&rdquo; means the buyer wants suppliers&rsquo; views before tendering: free to answer.")
+      +(fresh.length?slTable(fresh):'<div class="state">Nothing new that fits us right now. New work arrives each morning.</div>');
     list.innerHTML=html; wireTrackButtons(); wireFind();
+    var ss=document.querySelectorAll(".slst"); for(var i=0;i<ss.length;i++){(function(x){x.addEventListener("change",function(){slSetStatus(x);});})(ss[i]);}
   }).catch(function(e){ list.innerHTML='<div class="state">Could not load ('+esc(e.message)+').</div>'; });
 }
 function renderList(){
